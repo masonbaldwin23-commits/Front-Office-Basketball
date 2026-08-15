@@ -30,6 +30,7 @@ function makePlayer(id,teamId,r){
   player.draftPick=clamp(Math.round(61-((ratings.potential-55)*1.35)+(r()-.5)*12),1,60);
   player.history=createHistory(player,r);
   player.season={gp:0,minutes:0,points:0,rebounds:0,assists:0,fgm:0,fga:0,threeM:0,threeA:0,performances:[]};
+  player.postseason={gp:0,minutes:0,points:0,rebounds:0,assists:0,fgm:0,fga:0,threeM:0,threeA:0,performances:[]};
   const value=overall(player);player.contract={years:1+Math.floor(r()*5),salary:+Math.max(1.2,(value-55)*1.05+(r()-.5)*6).toFixed(1)};
   return player;
 }
@@ -61,7 +62,7 @@ function createHistory(player,r){
 
 export function createLeague(seed=Date.now(),simulationSeedOverride=null){
   const r=mulberry32(seed>>>0);
-  const teams=cities.map((city,id)=>({id,name:`${city} ${mascots[id]}`,conference:westernTeamIds.has(id)?"West":"East",wins:0,losses:0,pointsFor:0,pointsAgainst:0,scoutingTargets:{},proScout:45+Math.floor(r()*51),collegeScout:45+Math.floor(r()*51),analytics:45+Math.floor(r()*51),potentialEval:45+Math.floor(r()*51),risk:r()>.5?"Aggressive":"Cautious",philosophy:pick(["Build through the draft","Prioritize two-way players","Value shooting and spacing","Protect long-term flexibility","Pursue proven veterans"],r)}));
+  const teams=cities.map((city,id)=>({id,name:`${city} ${mascots[id]}`,conference:westernTeamIds.has(id)?"West":"East",wins:0,losses:0,pointsFor:0,pointsAgainst:0,scoutingTargets:{},scoutingKnowledge:{},proScout:45+Math.floor(r()*51),collegeScout:45+Math.floor(r()*51),analytics:45+Math.floor(r()*51),potentialEval:45+Math.floor(r()*51),risk:r()>.5?"Aggressive":"Cautious",philosophy:pick(["Build through the draft","Prioritize two-way players","Value shooting and spacing","Protect long-term flexibility","Pursue proven veterans"],r)}));
   const players=[];let id=0; for(const team of teams) for(let n=0;n<15;n++) players.push(makePlayer(id++,team.id,r));
   const prospects=[];for(let n=0;n<60;n++)prospects.push(makeProspect(1000+n,r));
   const randomRun=simulationSeedOverride??(globalThis.crypto?.getRandomValues?globalThis.crypto.getRandomValues(new Uint32Array(1))[0]:((Date.now()^Math.floor(Math.random()*0xffffffff))>>>0));
@@ -81,7 +82,7 @@ export function createLeague(seed=Date.now(),simulationSeedOverride=null){
 
 function makeProspect(id,r){
   const p=makePlayer(id,null,r);p.age=18+Math.floor(r()*5);p.experience=0;p.teamId=null;
-  const growth=Math.max(3,(23-p.age)*(.8+r()*.8));p.ratings.potential=clamp(Math.max(overall(p),overall(p)+growth));p.history=[];p.collegeSeason=emptyStatLine();p.draftPick=clamp(Math.round(61-((p.ratings.potential-55)*1.35)+(r()-.5)*14),1,60);p.season={...emptyStatLine(),performances:[]};return p;
+  const growth=Math.max(3,(23-p.age)*(.8+r()*.8));p.ratings.potential=clamp(Math.max(overall(p),overall(p)+growth));p.history=[];p.collegeSeason=emptyStatLine();p.draftPick=clamp(Math.round(61-((p.ratings.potential-55)*1.35)+(r()-.5)*14),1,60);p.season={...emptyStatLine(),performances:[]};p.postseason={...emptyStatLine(),performances:[]};return p;
 }
 
 function emptyStatLine(){return {gp:0,minutes:0,points:0,rebounds:0,assists:0,fgm:0,fga:0,threeM:0,threeA:0};}
@@ -142,7 +143,7 @@ function distributeInteger(total,weights){
   raw.map((n,i)=>({i,f:n-Math.floor(n)})).sort((a,b)=>b.f-a.f).slice(0,left).forEach(x=>out[x.i]++);return out;
 }
 
-function updatePlayers(rotation,teamPoints,r,won){
+function updatePlayers(rotation,teamPoints,r,won,statKey="season"){
   const scoringWeights=rotation.map(x=>x.minutes*Math.max(20,(x.player.ratings.finishing+x.player.ratings.threePoint+x.player.ratings.midrange)/3-35)*(1+x.player.ratings.playmaking/260));
   const points=distributeInteger(teamPoints,scoringWeights);
   return rotation.map((x,i)=>{
@@ -151,8 +152,9 @@ function updatePlayers(rotation,teamPoints,r,won){
     const ast=Math.max(0,Math.round(x.minutes*p.ratings.playmaking/99*(p.position==="PG"?.19:p.position==="SG"?.13:.08)+normal(r)));
     const statBoost=(points[i]-x.minutes*.42)*.20+(reb-4)*.16+(ast-3)*.18+(won?1:0);
     const performance=clamp(overall(p)+normal(r)*4.5+statBoost,40,99);
-    Object.assign(p.season,{gp:p.season.gp+1,minutes:p.season.minutes+x.minutes,points:p.season.points+points[i],rebounds:p.season.rebounds+reb,assists:p.season.assists+ast,fgm:p.season.fgm+fgm,fga:p.season.fga+fga,threeM:p.season.threeM+threeM,threeA:p.season.threeA+threeA});
-    p.season.performances.push(performance);
+    const stats=p[statKey]||(p[statKey]={...emptyStatLine(),performances:[]});stats.performances??=[];
+    Object.assign(stats,{gp:stats.gp+1,minutes:stats.minutes+x.minutes,points:stats.points+points[i],rebounds:stats.rebounds+reb,assists:stats.assists+ast,fgm:stats.fgm+fgm,fga:stats.fga+fga,threeM:stats.threeM+threeM,threeA:stats.threeA+threeA});
+    stats.performances.push(performance);
     return {playerId:p.id,minutes:x.minutes,points:points[i],rebounds:reb,assists:ast,performance};
   });
 }
@@ -192,19 +194,66 @@ export function simulateDays(league,count){const results=[];for(let i=0;i<count&
 
 function seededConference(league,conference){return league.teams.filter(t=>t.conference===conference).sort((a,b)=>(b.wins-a.wins)||((b.pointsFor-b.pointsAgainst)-(a.pointsFor-a.pointsAgainst))).map((team,i)=>({seed:i+1,teamId:team.id}));}
 function playoffStrength(league,teamId){const roster=league.players.filter(p=>p.teamId===teamId).sort((a,b)=>overall(b)-overall(a)).slice(0,8);return average(roster,overall)+league.teams[teamId].seasonModifier*.3;}
-function decideSeries(league,a,b,bestOf=7){const r=mulberry32((league.simulationSeed+a.teamId*4099+b.teamId*6151+(league.postseason?.round||0)*7919)>>>0),sa=playoffStrength(league,a.teamId),sb=playoffStrength(league,b.teamId),need=Math.ceil(bestOf/2);let aw=0,bw=0;while(aw<need&&bw<need){const chance=Math.max(.22,Math.min(.78,.5+(sa-sb)/45));if(r()<chance)aw++;else bw++;}const winner=aw>bw?a:b;return {a,b,aWins:aw,bWins:bw,winner};}
-function playIn(league,seeds){const sevenEight=decideSeries(league,seeds[6],seeds[7],1),nineTen=decideSeries(league,seeds[8],seeds[9],1),last=decideSeries(league,sevenEight.winner.teamId===seeds[6].teamId?seeds[7]:seeds[6],nineTen.winner,1);return {games:[sevenEight,nineTen,last],seven:{...sevenEight.winner,seed:7},eight:{...last.winner,seed:8}};}
-function roundSeries(league,seeds){return [[seeds[0],seeds[7]],[seeds[3],seeds[4]],[seeds[2],seeds[5]],[seeds[1],seeds[6]]].map(([a,b])=>decideSeries(league,a,b));}
-export function advancePostseason(league){
-  if(league.day<82)return null;
-  if(!league.postseason){const east=seededConference(league,"East"),west=seededConference(league,"West"),epi=playIn(league,east),wpi=playIn(league,west);league.postseason={stage:"First Round",round:1,playIn:{East:epi,West:wpi},current:{East:roundSeries(league,[...east.slice(0,6),epi.seven,epi.eight]),West:roundSeries(league,[...west.slice(0,6),wpi.seven,wpi.eight])},completed:[]};league.phase="Postseason";return league.postseason;}
-  const p=league.postseason;p.completed.push({stage:p.stage,series:p.current});p.round++;
-  if(p.stage==="First Round"){p.stage="Conference Semifinals";p.current={East:[decideSeries(league,p.current.East[0].winner,p.current.East[1].winner),decideSeries(league,p.current.East[2].winner,p.current.East[3].winner)],West:[decideSeries(league,p.current.West[0].winner,p.current.West[1].winner),decideSeries(league,p.current.West[2].winner,p.current.West[3].winner)]};}
-  else if(p.stage==="Conference Semifinals"){p.stage="Conference Finals";p.current={East:[decideSeries(league,p.current.East[0].winner,p.current.East[1].winner)],West:[decideSeries(league,p.current.West[0].winner,p.current.West[1].winner)]};}
-  else if(p.stage==="Conference Finals"){p.stage="Finals";p.current={Finals:[decideSeries(league,p.current.East[0].winner,p.current.West[0].winner)]};}
-  else if(p.stage==="Finals"){p.stage="Season Complete";p.champion=p.current.Finals[0].winner.teamId;p.current={};league.phase="Offseason";}
+function createSeries(a,b,bestOf=7){return {a,b,bestOf,aWins:0,bWins:0,winner:null,games:[]};}
+function simulateSeriesGame(league,series){
+  if(series.winner)return series;
+  const p=league.postseason,gameNumber=p.gameNumber||0,r=mulberry32((league.simulationSeed+series.a.teamId*4099+series.b.teamId*6151+(p.round||0)*7919+gameNumber*104729)>>>0),homePattern=[true,true,false,false,true,false,true],seriesGame=(series.games?.length||0)+1,aHome=series.bestOf===1?true:homePattern[Math.min(homePattern.length-1,seriesGame-1)],homeId=aHome?series.a.teamId:series.b.teamId,awayId=aHome?series.b.teamId:series.a.teamId,homeRotation=rotationFor(league,homeId),awayRotation=rotationFor(league,awayId),homeM=teamMetrics(homeRotation),awayM=teamMetrics(awayRotation),home=league.teams[homeId],away=league.teams[awayId];
+  let homeScore=Math.round(108+(homeM.offense-awayM.defense)*.42+(home.seasonModifier-away.seasonModifier)+(homeM.pace-100)*.12+2.2+normal(r)*8.5),awayScore=Math.round(108+(awayM.offense-homeM.defense)*.42+(away.seasonModifier-home.seasonModifier)+(awayM.pace-100)*.12+normal(r)*8.5);
+  homeScore=Math.max(78,homeScore);awayScore=Math.max(78,awayScore);if(homeScore===awayScore)homeScore+=3+Math.floor(r()*8);
+  const homeWon=homeScore>awayScore,winnerId=homeWon?homeId:awayId,result={postseason:true,stage:p.stage,round:p.round,gameNumber:gameNumber+1,seriesGame,homeId,awayId,homeScore,awayScore,winnerId,homeBox:updatePlayers(homeRotation,homeScore,r,homeWon,"postseason"),awayBox:updatePlayers(awayRotation,awayScore,r,!homeWon,"postseason")};
+  p.results??=[];p.results.push(result);series.games??=[];series.games.push({postseason:true,stage:p.stage,round:p.round,gameNumber:gameNumber+1,seriesGame,homeId,awayId,homeScore,awayScore,winnerId});
+  if(winnerId===series.a.teamId)series.aWins++;else series.bWins++;p.gameNumber=gameNumber+1;
+  const need=Math.ceil((series.bestOf||7)/2);if(series.aWins>=need)series.winner=series.a;else if(series.bWins>=need)series.winner=series.b;return series;
+}
+function initialPlayIn(seeds){return [createSeries(seeds[6],seeds[7],1),createSeries(seeds[8],seeds[9],1)];}
+function preparePlayInFinals(p){
+  for(const conference of ["East","West"]){const games=p.current[conference];if(games?.length===2&&games.every(x=>x.winner)){const loser78=games[0].winner.teamId===games[0].a.teamId?games[0].b:games[0].a;games.push(createSeries(loser78,games[1].winner,1));}}
+}
+function roundSeries(seeds){return [[seeds[0],seeds[7]],[seeds[3],seeds[4]],[seeds[2],seeds[5]],[seeds[1],seeds[6]]].map(([a,b])=>createSeries(a,b));}
+function stageComplete(p){const groups=Object.values(p.current||{});return groups.length>0&&groups.every(series=>series.length&&series.every(x=>x.winner))&&(p.stage!=="Play-In"||groups.every(series=>series.length===3));}
+function archiveCurrent(p){p.completed.push({stage:p.stage,series:p.current});p.round++;}
+function startPostseason(league){
+  const east=seededConference(league,"East"),west=seededConference(league,"West");league.postseason={stage:"Play-In",round:0,gameNumber:0,results:[],seeds:{East:east,West:west},playIn:null,current:{East:initialPlayIn(east),West:initialPlayIn(west)},completed:[]};league.phase="Postseason";return league.postseason;
+}
+function advancePostseasonStage(league){
+  const p=league.postseason;if(!p||!stageComplete(p))return p;archiveCurrent(p);
+  if(p.stage==="Play-In"){
+    p.playIn={};for(const conference of ["East","West"]){const games=p.current[conference];p.playIn[conference]={games,seven:{...games[0].winner,seed:7},eight:{...games[2].winner,seed:8}};}
+    p.stage="First Round";p.current={East:roundSeries([...p.seeds.East.slice(0,6),p.playIn.East.seven,p.playIn.East.eight]),West:roundSeries([...p.seeds.West.slice(0,6),p.playIn.West.seven,p.playIn.West.eight])};
+  }else if(p.stage==="First Round"){
+    p.stage="Conference Semifinals";p.current={East:[createSeries(p.current.East[0].winner,p.current.East[1].winner),createSeries(p.current.East[2].winner,p.current.East[3].winner)],West:[createSeries(p.current.West[0].winner,p.current.West[1].winner),createSeries(p.current.West[2].winner,p.current.West[3].winner)]};
+  }else if(p.stage==="Conference Semifinals"){
+    p.stage="Conference Finals";p.current={East:[createSeries(p.current.East[0].winner,p.current.East[1].winner)],West:[createSeries(p.current.West[0].winner,p.current.West[1].winner)]};
+  }else if(p.stage==="Conference Finals"){
+    p.stage="Finals";p.current={Finals:[createSeries(p.current.East[0].winner,p.current.West[0].winner)]};
+  }else if(p.stage==="Finals"){
+    p.stage="Season Complete";p.champion=p.current.Finals[0].winner.teamId;p.current={};league.phase="Offseason";
+  }
   return p;
 }
+function migrateLegacyPostseason(league){
+  const p=league.postseason;if(!p)return;
+  p.completed??=[];p.gameNumber??=0;p.round??=0;p.results??=[];
+  if(p.stage==="Play-In"&&(!p.current||!Object.keys(p.current).length))p.current={East:initialPlayIn(p.seeds.East),West:initialPlayIn(p.seeds.West)};
+  if(p.stage==="Play-In Results"){
+    p.playIn??={East:{games:p.current.East,seven:{...p.current.East[0].winner,seed:7},eight:{...p.current.East[2].winner,seed:8}},West:{games:p.current.West,seven:{...p.current.West[0].winner,seed:7},eight:{...p.current.West[2].winner,seed:8}}};
+    p.stage="First Round";p.current={East:roundSeries([...p.seeds.East.slice(0,6),p.playIn.East.seven,p.playIn.East.eight]),West:roundSeries([...p.seeds.West.slice(0,6),p.playIn.West.seven,p.playIn.West.eight])};
+  }
+  for(const list of Object.values(p.current||{}))for(const series of list){
+    series.bestOf??=(p.stage==="Play-In"?1:7);series.games??=[];const missingScore=series.aWins===undefined&&series.bWins===undefined;series.aWins??=0;series.bWins??=0;
+    if(missingScore&&series.winner){const clinch=Math.ceil(series.bestOf/2);if(series.winner.teamId===series.a.teamId)series.aWins=clinch;else series.bWins=clinch;}series.winner??=null;
+  }
+}
+export function simulatePostseasonGame(league){
+  if(league.day<82)return null;if(!league.postseason)return startPostseason(league);migrateLegacyPostseason(league);const p=league.postseason;if(p.stage==="Season Complete")return p;
+  preparePlayInFinals(p);const order=p.stage==="Finals"?["Finals"]:["East","West"],active=order.flatMap(conference=>p.current[conference]||[]).filter(series=>!series.winner);
+  for(const series of active)simulateSeriesGame(league,series);
+  preparePlayInFinals(p);if(stageComplete(p))advancePostseasonStage(league);return p;
+}
+export function simulatePostseasonRound(league){
+  if(league.day<82)return null;if(!league.postseason)return startPostseason(league);migrateLegacyPostseason(league);const startStage=league.postseason.stage;let safety=0;while(league.postseason.stage===startStage&&league.postseason.stage!=="Season Complete"&&safety++<200)simulatePostseasonGame(league);return league.postseason;
+}
+export function advancePostseason(league){if(league.day<82)return null;if(!league.postseason)return startPostseason(league);return simulatePostseasonRound(league);}
 
 export function performanceSummary(player){
   const s=player.season,recent=s.performances.slice(-10),avg=a=>a.length?Math.round(a.reduce((x,y)=>x+y,0)/a.length):null,currentForm=avg(recent),seasonImpact=avg(s.performances),historicalPeak=Math.max(...player.history.map(h=>h.performanceOvr||overall(player)),overall(player));
@@ -213,7 +262,9 @@ export function performanceSummary(player){
   return {currentForm,seasonImpact,careerPeak:historicalPeak,trajectory};
 }
 
-export function seasonAverages(player){const s=player.season,d=Math.max(1,s.gp);return {gp:s.gp,mpg:+(s.minutes/d).toFixed(1),ppg:+(s.points/d).toFixed(1),rpg:+(s.rebounds/d).toFixed(1),apg:+(s.assists/d).toFixed(1),fg:s.fga?+(s.fgm/s.fga*100).toFixed(1):0,three:s.threeA?+(s.threeM/s.threeA*100).toFixed(1):0};}
+function averagesFor(s=emptyStatLine()){const d=Math.max(1,s.gp);return {gp:s.gp,mpg:+(s.minutes/d).toFixed(1),ppg:+(s.points/d).toFixed(1),rpg:+(s.rebounds/d).toFixed(1),apg:+(s.assists/d).toFixed(1),fg:s.fga?+(s.fgm/s.fga*100).toFixed(1):0,three:s.threeA?+(s.threeM/s.threeA*100).toFixed(1):0};}
+export function seasonAverages(player){return averagesFor(player.season);}
+export function postseasonAverages(player){return averagesFor(player.postseason);}
 export function collegeAverages(player){const s=player.collegeSeason||emptyStatLine(),d=Math.max(1,s.gp);return {gp:s.gp,mpg:+(s.minutes/d).toFixed(1),ppg:+(s.points/d).toFixed(1),rpg:+(s.rebounds/d).toFixed(1),apg:+(s.assists/d).toFixed(1),fg:s.fga?+(s.fgm/s.fga*100).toFixed(1):0,three:s.threeA?+(s.threeM/s.threeA*100).toFixed(1):0};}
 
 function calculatePowerRankings(league,viewerId,conference="All",preseason=false){
@@ -241,11 +292,11 @@ export function powerRankings(league,viewerId,conference="All",preseason=false){
 export function scoutingReport(league,viewerId,player){
   const viewer=league.teams[viewerId],isProspect=player.teamId===null,own=viewerId===player.teamId;
   const seasonEvidence=Math.min(16,player.season.gp*.4);
-  const targetStart=viewer.scoutingTargets?.[player.id],targetDays=targetStart===undefined?0:Math.max(0,league.day-targetStart+1),targetBonus=Math.min(14,targetDays*1.15);
+  const targetStart=viewer.scoutingTargets?.[player.id],retainedDays=viewer.scoutingKnowledge?.[player.id]||0,activeDays=targetStart===undefined?0:Math.max(0,league.day-targetStart),targetDays=retainedDays+activeDays;
   const collegeEvidence=isProspect?Math.min(12,collegeAverages(player).gp*.4):0;
-  const familiarity=own?Math.min(98,94+player.season.gp*.08):Math.min(97,50+player.experience*4+Math.abs(overall(player)-72)*.25+seasonEvidence+targetBonus+collegeEvidence);
+  const familiarity=own?Math.min(98,94+player.season.gp*.08):Math.min(97,50+player.experience*4+Math.abs(overall(player)-72)*.25+seasonEvidence+collegeEvidence);
   const skill=isProspect?(viewer.collegeScout*.72+viewer.analytics*.13+viewer.potentialEval*.15):(viewer.proScout*.72+viewer.analytics*.18+viewer.potentialEval*.10);
-  const confidence=clamp((familiarity+skill)/2,35,98);
+  const baseConfidence=(familiarity+skill)/2,targetProgress=Math.min(1,targetDays/55),targetCeiling=Math.min(95,88+skill*.07),confidence=clamp(own?baseConfidence:baseConfidence+(targetCeiling-baseConfidence)*Math.pow(targetProgress,.75),35,98);
   const estimates={};
   for(const [key] of ATTRIBUTES){
     const potentialPenalty=key==="potential"?(isProspect?16:11):0;
@@ -266,10 +317,10 @@ export function scoutingReport(league,viewerId,player){
   const upside=Math.max(0,perceivedPotential-perceivedOverall);
   const marketScore=perceivedOverall+(player.age<=23?upside*.55:upside*.2);
   const marketTier=marketScore>=90?"Franchise asset":marketScore>=84?"Premium asset":marketScore>=78?"High-value starter":marketScore>=70?"Rotation value":"Developmental";
-  return {confidence,estimates,perceived:perceivedOverall,overallLow,overallHigh,perceivedPotential,marketScore,marketTier,own,isProspect,targeted:targetStart!==undefined,targetDays};
+  return {confidence,estimates,perceived:perceivedOverall,overallLow,overallHigh,perceivedPotential,marketScore,marketTier,own,isProspect,targeted:targetStart!==undefined,targetDays,retainedKnowledge:targetStart===undefined&&targetDays>0};
 }
 
-export function setScoutingTarget(league,viewerId,playerId,target=true){const targets=league.teams[viewerId].scoutingTargets;if(target)targets[playerId]=league.day;else delete targets[playerId];}
+export function setScoutingTarget(league,viewerId,playerId,target=true){const viewer=league.teams[viewerId],targets=viewer.scoutingTargets||(viewer.scoutingTargets={}),knowledge=viewer.scoutingKnowledge||(viewer.scoutingKnowledge={});if(target){if(targets[playerId]===undefined)targets[playerId]=league.day;}else if(targets[playerId]!==undefined){knowledge[playerId]=(knowledge[playerId]||0)+Math.max(0,league.day-targets[playerId]);delete targets[playerId];}}
 
 const average=(items,fn)=>items.length?items.reduce((s,x)=>s+fn(x),0)/items.length:0;
 const midpoint=(report,key)=>(report.estimates[key].low+report.estimates[key].high)/2;

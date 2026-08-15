@@ -4,13 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Front Office Basketball</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=0.7.0-alpha">
 </head>
 <body class="menu-open">
-  <div id="save-toast" class="save-toast" role="status">✓ Saved successfully</div>
+  <div id="save-toast" class="save-toast" role="status"></div>
   <section id="setup-screen" class="setup-screen">
     <div class="setup-card panel">
-      <p class="eyebrow">FRONT OFFICE BASKETBALL</p><h1>Choose how to enter the league</h1>
+      <div class="setup-kicker"><p class="eyebrow">FRONT OFFICE BASKETBALL</p><span id="menu-version" class="version-badge">Prototype v0.7.0-alpha</span></div><h1>Choose how to enter the league</h1>
       <p class="summary">Create a named league, manage one locked-in organization, or watch all 30 AI front offices manage themselves.</p>
       <label>League name<input id="league-name" maxlength="40" placeholder="My Basketball Universe"></label>
       <label>Starting organization<select id="setup-team"></select></label>
@@ -28,6 +28,7 @@
       <button class="nav-tab active" data-screen="roster-screen">My Roster</button>
       <button class="nav-tab" data-screen="trade-screen">Trade Center</button>
       <button class="nav-tab" data-screen="calendar-screen">Calendar</button>
+      <button id="playoffs-tab" class="nav-tab hidden" data-screen="playoffs-screen">Playoffs</button>
       <button class="nav-tab" data-screen="scouting-screen">Scouting</button>
     </nav>
     <section class="controls panel two-controls">
@@ -47,7 +48,6 @@
         <div><strong id="conference-rank">—</strong><span>League rank</span></div>
         <div class="recent-box"><strong>Recent results</strong><span id="recent-results">No games played</span></div>
       </div>
-      <div id="postseason-center" class="postseason-center hidden"></div>
     </section>
     <section id="trade-screen" class="app-screen team-comparison">
       <article class="panel team-board">
@@ -64,6 +64,7 @@
       </article>
     </section>
     <section id="roster-screen" class="app-screen hidden">
+      <article id="latest-box-score" class="panel latest-game-panel hidden"></article>
       <article class="panel team-board single-board">
         <div class="team-board-title"><div><p class="eyebrow">INTERNAL FRONT OFFICE</p><h2 id="roster-screen-name"></h2></div><span class="tag">PRIVATE ASSESSMENT</span></div>
         <div id="roster-screen-report" class="team-report"></div>
@@ -76,6 +77,9 @@
         <div class="section-title"><div><p class="eyebrow">2026–27 SCHEDULE</p><h2 id="calendar-team-name"></h2></div><span class="roster-note">Choose any future game to simulate directly to it</span></div>
         <div id="calendar-body" class="calendar-months"></div>
       </article>
+    </section>
+    <section id="playoffs-screen" class="app-screen hidden">
+      <article class="panel playoffs-panel"><div id="postseason-center" class="postseason-center"></div></article>
     </section>
     <section id="scouting-screen" class="app-screen hidden scouting-layout">
       <nav class="scouting-subnav panel"><button class="scouting-subtab active" data-scouting-section="standings-section">Standings</button><button class="scouting-subtab" data-scouting-section="rankings-section">Power Rankings</button><button class="scouting-subtab" data-scouting-section="players-section">Player Scouting</button></nav>
@@ -92,13 +96,15 @@
       <div id="players-section" class="scouting-section hidden scouting-player-sections">
       <article class="panel scouting-panel">
         <div class="section-title"><div><p class="eyebrow">PRO SCOUTING</p><h2>Target another roster</h2></div><label>Organization<select id="scout-team-select"></select></label></div>
-        <p class="summary">Targeted scouting narrows uncertainty over time. Your professional scouting quality determines how quickly the report improves.</p>
+        <p class="summary">Targeted scouting narrows uncertainty quickly. A 50-game assignment approaches internal familiarity, while staff quality still determines the final level of confidence.</p>
+        <nav class="draft-view-nav"><button class="pro-view-tab draft-view-tab active" data-pro-view="all">Full roster</button><button class="pro-view-tab draft-view-tab" data-pro-view="assigned">Assigned players <span id="assigned-pro-count">0</span></button></nav>
         <div class="scouting-tools"><label>Sort<select id="pro-sort"><option value="overall">Highest suspected overall</option><option value="fit">Best team fit</option><option value="position">Position</option></select></label><label>Position<select id="pro-position"><option value="All">All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select></label></div>
         <div class="table-wrap"><table><thead><tr><th>Player / assignment</th><th>Pos</th><th>Age</th><th>Talent estimate</th><th>Confidence</th></tr></thead><tbody id="pro-scouting-body"></tbody></table></div>
       </article>
       <article class="panel scouting-panel draft-panel">
         <div class="section-title"><div><p class="eyebrow">2027 DRAFT CLASS</p><h2>Prospect board</h2></div><span class="roster-note">College production · projected peak · uncertain evaluations</span></div>
         <div class="auto-scout-box"><label>Automatic assignment<select id="draft-auto-strategy"><option value="range">Around projected draft range</option><option value="best">Best available prospects</option><option value="position">Positions of need</option></select></label><button id="auto-assign-draft">Assign scouts automatically</button><small id="draft-range-note"></small></div>
+        <nav class="draft-view-nav"><button class="draft-view-tab active" data-draft-view="all">Full board</button><button class="draft-view-tab" data-draft-view="assigned">Assigned prospects <span id="assigned-prospect-count">0</span></button></nav>
         <div class="scouting-tools"><label>Sort<select id="draft-sort"><option value="overall">Highest suspected overall</option><option value="fit">Best team fit</option><option value="position">Position</option></select></label><label>Position<select id="draft-position"><option value="All">All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select></label></div>
         <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Prospect / assignment</th><th>Pos</th><th>Age</th><th>Current talent</th><th>Projected peak</th><th>Confidence</th></tr></thead><tbody id="draft-board-body"></tbody></table></div>
       </article>
@@ -111,6 +117,6 @@
     <p class="summary">Ten game dates have passed. Would you like the front office to automatically focus on prospects near your currently projected draft range?</p>
     <div class="reminder-actions"><button id="reminder-auto">Assign automatically</button><button id="reminder-review" class="ghost">Review strategies</button><button id="reminder-manual" class="ghost">Keep scouting manually</button></div>
   </dialog>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=0.7.0-alpha"></script>
 </body>
 </html>

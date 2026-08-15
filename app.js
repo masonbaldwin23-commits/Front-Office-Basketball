@@ -1,10 +1,12 @@
-import {ATTRIBUTES,TEAM_DIRECTIONS,createLeague,scoutingReport,playerScoutExplanation,teamScoutingReport,simulateDays,advancePostseason,performanceSummary,seasonAverages,collegeAverages,setDeclaredDirection,setScoutingTarget,powerRankings,gameDate,inches} from "./engine.js";
+import {ATTRIBUTES,TEAM_DIRECTIONS,createLeague,scoutingReport,playerScoutExplanation,teamScoutingReport,simulateDays,advancePostseason,simulatePostseasonGame,simulatePostseasonRound,performanceSummary,seasonAverages,postseasonAverages,collegeAverages,setDeclaredDirection,setScoutingTarget,powerRankings,gameDate,inches} from "./engine.js";
 
 const $=id=>document.getElementById(id);
 const STORAGE_KEY="front-office-basketball-saves-v1";
-let league,commissioner=false,activeScreen="roster-screen",rankingConference="All",standingsConference="All",controlledTeamId=4,saveId=null,leagueName="",toastTimer=null;
+const GAME_VERSION="0.7.0-alpha";
+let league,commissioner=false,activeScreen="roster-screen",rankingConference="All",standingsConference="All",proBoardMode="all",draftBoardMode="all",controlledTeamId=4,saveId=null,leagueName="",toastTimer=null;
 const grade=n=>n>=90?"A+":n>=86?"A":n>=82?"A-":n>=78?"B+":n>=74?"B":n>=70?"B-":n>=66?"C+":n>=62?"C":"C-";
 function option(value,text){const o=document.createElement("option");o.value=value;o.textContent=text;return o;}
+function escapeHtml(value){return String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
 function init(seed=Date.now()){
   league=createLeague(seed);
@@ -14,7 +16,8 @@ function init(seed=Date.now()){
 
 function mountLeague(){
   for(const p of league.prospects){if(!p.collegeSeason){p.collegeSeason={gp:0,minutes:0,points:0,rebounds:0,assists:0,fgm:0,fga:0,threeM:0,threeA:0};p.history=[];}}
-  league.seasonYear??=2026;league.phase??="Regular Season";league.postseason??=null;for(const p of league.players)p.contract??={years:1+((p.id+league.seed)%5),salary:+Math.max(1.2,(scoutingReport(league,p.teamId,p).perceived-55)*1.05).toFixed(1)};
+  for(const team of league.teams){team.scoutingTargets??={};team.scoutingKnowledge??={};}
+  league.seasonYear??=2026;league.phase??="Regular Season";league.postseason??=null;for(const p of league.players){p.contract??={years:1+((p.id+league.seed)%5),salary:+Math.max(1.2,(scoutingReport(league,p.teamId,p).perceived-55)*1.05).toFixed(1)};p.postseason??={gp:0,minutes:0,points:0,rebounds:0,assists:0,fgm:0,fga:0,threeM:0,threeA:0,performances:[]};}
   $("viewer-team").replaceChildren(...league.teams.map(t=>option(t.id,t.name)));
   $("viewer-team").value=controlledTeamId??4;
   $("setup-team").replaceChildren(...league.teams.map(t=>option(t.id,t.name)));$("setup-team").value=controlledTeamId??4;
@@ -27,18 +30,39 @@ function mountLeague(){
 
 function allSaves(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");}catch{return [];}}
 function saveDateText(){return gameDate(Math.min(81,Math.max(0,league.day)));}
-function showSaveToast(){clearTimeout(toastTimer);$("save-toast").classList.add("show");toastTimer=setTimeout(()=>$("save-toast").classList.remove("show"),1800);}
+function cloneData(value){return typeof structuredClone==="function"?structuredClone(value):JSON.parse(JSON.stringify(value));}
+function compactLeagueForSave(source,retainedTeamIds=[]){
+  const copy=cloneData(source),keep=new Set(retainedTeamIds.filter(Number.isInteger));
+  for(const game of copy.results||[]){if(!keep.has(game.homeId)&&!keep.has(game.awayId)){delete game.homeBox;delete game.awayBox;}}
+  for(const game of copy.postseason?.results||[]){if(!keep.has(game.homeId)&&!keep.has(game.awayId)){delete game.homeBox;delete game.awayBox;}}
+  return copy;
+}
+function compactStoredEntry(entry,retainBoxes=true){
+  const teamIds=retainBoxes?[entry.controlledTeamId,entry.viewTeamId]:[];
+  return {...entry,version:entry.version||"legacy",league:compactLeagueForSave(entry.league,teamIds)};
+}
+function showToast(message,type="success"){clearTimeout(toastTimer);const toast=$("save-toast");toast.textContent=message;toast.classList.toggle("error",type==="error");toast.classList.add("show");toastTimer=setTimeout(()=>toast.classList.remove("show"),type==="error"?4200:2200);}
 function saveLeague(showFeedback=false){
-  if(!league)return;saveId=saveId||`league-${Date.now()}`;leagueName=leagueName||$("league-name").value.trim()||"Basketball Universe";const saves=allSaves(),entry={id:saveId,name:leagueName,savedAt:Date.now(),date:saveDateText(),controlledTeamId,viewTeamId:Number($("viewer-team").value),league};const index=saves.findIndex(x=>x.id===saveId);if(index>=0)saves[index]=entry;else saves.unshift(entry);localStorage.setItem(STORAGE_KEY,JSON.stringify(saves));renderSavedLeagues();
-  if(showFeedback)showSaveToast();
+  if(!league)return false;
+  saveId=saveId||`league-${Date.now()}`;leagueName=leagueName||$("league-name").value.trim()||"Basketball Universe";
+  const viewTeamId=Number($("viewer-team").value),saves=allSaves().map(s=>compactStoredEntry(s)),entry={id:saveId,name:leagueName,savedAt:Date.now(),date:saveDateText(),controlledTeamId,viewTeamId,version:GAME_VERSION,league:compactLeagueForSave(league,[controlledTeamId,viewTeamId])},index=saves.findIndex(x=>x.id===saveId);
+  if(index>=0)saves[index]=entry;else saves.unshift(entry);
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(saves));}
+  catch(firstError){
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify(saves.map(s=>compactStoredEntry(s,false))));}
+    catch(error){console.error("League save failed",error);showToast("Save failed — browser storage is full. Delete an old save and try again.","error");return false;}
+  }
+  renderSavedLeagues();if(showFeedback)showToast("✓ Saved successfully");return true;
 }
 function renderSavedLeagues(){
-  const saves=allSaves();$("saved-league-list").innerHTML=saves.length?saves.sort((a,b)=>b.savedAt-a.savedAt).map(s=>`<div class="save-card"><div><strong>${s.name}</strong><small>${s.date} · ${s.controlledTeamId===null?"Spectator league":s.league.teams[s.controlledTeamId]?.name||"Unknown team"}</small></div><button class="load-save" data-save-id="${s.id}">Continue</button></div>`).join(""):"<span>No saved leagues yet.</span>";
+  const saves=allSaves();$("saved-league-list").innerHTML=saves.length?saves.sort((a,b)=>b.savedAt-a.savedAt).map(s=>`<div class="save-card"><div><strong>${escapeHtml(s.name)}</strong><small>${escapeHtml(s.date)} · ${s.controlledTeamId===null?"Spectator league":escapeHtml(s.league.teams[s.controlledTeamId]?.name||"Unknown team")} · v${escapeHtml(s.version||"legacy")}</small></div><div class="save-actions"><button class="load-save" data-save-id="${s.id}">Continue</button><button class="delete-save danger" data-save-id="${s.id}">Delete</button></div></div>`).join(""):"<span>No saved leagues yet.</span>";
   document.querySelectorAll(".load-save").forEach(b=>b.addEventListener("click",()=>loadLeague(b.dataset.saveId)));
+  document.querySelectorAll(".delete-save").forEach(b=>b.addEventListener("click",()=>deleteSave(b.dataset.saveId)));
 }
-function loadLeague(id){const entry=allSaves().find(x=>x.id===id);if(!entry)return;league=entry.league;saveId=entry.id;leagueName=entry.name;controlledTeamId=entry.controlledTeamId;mountLeague();$("viewer-team").value=entry.viewTeamId??controlledTeamId??4;applyModeUi();$("setup-screen").classList.add("closed");document.body.classList.remove("menu-open");populateOpponentTeams();populateScoutingTeams();render();}
+function deleteSave(id){const entry=allSaves().find(x=>x.id===id);if(!entry||!confirm(`Delete \"${entry.name}\"? This cannot be undone.`))return;try{localStorage.setItem(STORAGE_KEY,JSON.stringify(allSaves().filter(x=>x.id!==id)));if(saveId===id){saveId=null;}renderSavedLeagues();showToast("Save deleted");}catch(error){console.error("Save deletion failed",error);showToast("Could not delete that save.","error");}}
+function loadLeague(id){const entry=allSaves().find(x=>x.id===id);if(!entry)return;league=entry.league;saveId=entry.id;leagueName=entry.name;controlledTeamId=entry.controlledTeamId;mountLeague();$("viewer-team").value=entry.viewTeamId??controlledTeamId??4;if(entry.version!==GAME_VERSION&&controlledTeamId!==null&&league.day>=10&&!hasDraftAssignments(controlledTeamId))league.scoutingReminderHandled=false;applyModeUi();$("setup-screen").classList.add("closed");document.body.classList.remove("menu-open");populateOpponentTeams();populateScoutingTeams();render();setTimeout(maybePromptScouting,0);}
 function applyModeUi(){const spectator=controlledTeamId===null;league.userTeamId=controlledTeamId;$("viewer-label").textContent=spectator?"Viewing organization":"Your organization";$("viewer-team").closest("label").classList.toggle("hidden",!spectator);document.querySelector('[data-screen="roster-screen"]').textContent=spectator?"Team Roster":"My Roster";}
-function returnToMenu(){saveLeague();$("setup-screen").classList.remove("closed");document.body.classList.add("menu-open");renderSavedLeagues();}
+function returnToMenu(){if(!saveLeague(true))return;$("setup-screen").classList.remove("closed");document.body.classList.add("menu-open");renderSavedLeagues();}
 
 function populateScoutingTeams(){const viewer=Number($("viewer-team").value),old=Number($("scout-team-select")?.value),teams=league.teams.filter(t=>t.id!==viewer);$("scout-team-select").replaceChildren(...teams.map(t=>option(t.id,t.name)));if(teams.some(t=>t.id===old))$("scout-team-select").value=old;}
 
@@ -72,7 +96,7 @@ function render(){
   $("own-report").innerHTML=reportHtml(ownReport,controlled);$("opponent-report").innerHTML=reportHtml(opponentReport);
   $("own-roster").innerHTML=rosterHtml(rosterRows(viewerId,viewerId),controlled,"trade");$("opponent-roster").innerHTML=rosterHtml(rosterRows(targetId,viewerId),false,"trade");
   $("roster-screen-name").textContent=viewer.name;$("roster-screen-report").innerHTML=reportHtml(ownReport,controlled);$("roster-screen-players").innerHTML=rosterHtml(rosterRows(viewerId,viewerId),controlled,"roster");
-  renderSeasonCenter(viewerId);renderCalendar(viewerId);renderScouting(viewerId);bindDynamicControls(viewerId);
+  renderSeasonCenter(viewerId);renderLatestBoxScore(viewerId);renderCalendar(viewerId);renderScouting(viewerId);bindDynamicControls(viewerId);
 }
 
 function marketRead(row){const move=(row.preseasonRank||row.rank)-row.rank;if(row.preseasonRank<=6&&row.rank>=15)return "Disappointing contender — monitor as seller";if(row.team.declaredDirection==="Rebuilding")return "Likely seller; seek veterans or absorb salary";if(row.team.declaredDirection==="Contending")return "Likely buyer; core players difficult to acquire";if(move>=6)return "Rising team; may seek a finishing piece";if(move<=-6)return "Falling below expectations; direction may change";return "Market position currently stable";}
@@ -86,12 +110,12 @@ function sortScoutingRows(rows,sort,viewerId){return [...rows].sort((a,b)=>sort=
 function projectedDraftSlot(teamId){const inverse=[...league.teams].sort((a,b)=>a.wins/(a.wins+a.losses||1)-b.wins/(b.wins+b.losses||1)||(a.pointsFor-a.pointsAgainst)/(a.wins+a.losses||1)-(b.pointsFor-b.pointsAgainst)/(b.wins+b.losses||1));return inverse.findIndex(t=>t.id===teamId)+1;}
 
 function autoAssignDraft(viewerId){
-  const viewer=league.teams[viewerId],strategy=$("draft-auto-strategy").value,rows=league.prospects.map(p=>({p,r:scoutingReport(league,viewerId,p)})).sort((a,b)=>b.r.marketScore-a.r.marketScore),slot=projectedDraftSlot(viewerId);for(const p of league.prospects)delete viewer.scoutingTargets[p.id];let choices;if(strategy==="range")choices=rows.slice(Math.max(0,slot-5),Math.min(rows.length,slot+5));else if(strategy==="position")choices=sortScoutingRows(rows,"fit",viewerId).slice(0,10);else choices=rows.slice(0,10);for(const x of choices)setScoutingTarget(league,viewerId,x.p.id,true);render();saveLeague();
+  const viewer=league.teams[viewerId],strategy=$("draft-auto-strategy").value,rows=league.prospects.map(p=>({p,r:scoutingReport(league,viewerId,p)})).sort((a,b)=>b.r.marketScore-a.r.marketScore),slot=projectedDraftSlot(viewerId);for(const p of league.prospects)setScoutingTarget(league,viewerId,p.id,false);let choices;if(strategy==="range")choices=rows.slice(Math.max(0,slot-5),Math.min(rows.length,slot+5));else if(strategy==="position")choices=sortScoutingRows(rows,"fit",viewerId).slice(0,10);else choices=rows.slice(0,10);for(const x of choices)setScoutingTarget(league,viewerId,x.p.id,true);draftBoardMode="assigned";render();saveLeague();showToast(`✓ Scouts assigned to ${choices.length} prospects`);
 }
 
 function hasDraftAssignments(viewerId){const targets=league.teams[viewerId].scoutingTargets||{};return league.prospects.some(p=>targets[p.id]!==undefined);}
-function maybePromptScouting(beforeDay){if(controlledTeamId===null||league.scoutingReminderHandled||beforeDay>=10||league.day<10||hasDraftAssignments(controlledTeamId))return;league.scoutingReminderHandled=true;$("scouting-reminder").showModal();saveLeague();}
-function simulateFromUi(count){const before=league.day;simulateDays(league,count);render();saveLeague();maybePromptScouting(before);}
+function maybePromptScouting(){if(controlledTeamId===null||league.scoutingReminderHandled||league.day<10||hasDraftAssignments(controlledTeamId)||!$("setup-screen").classList.contains("closed"))return;league.scoutingReminderHandled=true;$("scouting-reminder").showModal();saveLeague();}
+function simulateFromUi(count){simulateDays(league,count);render();saveLeague();maybePromptScouting();}
 
 function rankingExplanation(row,viewerId){
   const snapshotDay=row.snapshotDay||0,games=league.results.filter(g=>g.day<=snapshotDay&&g.day>snapshotDay-7&&(g.homeId===row.team.id||g.awayId===row.team.id)),wins=games.filter(g=>(g.homeId===row.team.id&&g.homeScore>g.awayScore)||(g.awayId===row.team.id&&g.awayScore>g.homeScore)).length,losses=games.length-wins;
@@ -109,23 +133,28 @@ function rankingExplanation(row,viewerId){
 function renderScouting(viewerId){
   const standingsPool=standingsConference==="All"?league.teams:league.teams.filter(t=>t.conference===standingsConference);
   const standings=[...standingsPool].sort((a,b)=>{const ag=a.wins+a.losses,bg=b.wins+b.losses,ap=ag?a.wins/ag:.5,bp=bg?b.wins/bg:.5,anet=ag?(a.pointsFor-a.pointsAgainst)/ag:0,bnet=bg?(b.pointsFor-b.pointsAgainst)/bg:0;return bp-ap||bnet-anet||b.wins-a.wins;});
-  $("standings-body").innerHTML=standings.map((t,i)=>{const games=t.wins+t.losses,net=games?(t.pointsFor-t.pointsAgainst)/games:0,pct=games?(t.wins/games).toFixed(3).replace(/^0/,""):"—";return `<tr><td><strong>#${i+1}</strong></td><td>${t.name}</td><td>${t.conference}</td><td>${t.wins}-${t.losses}</td><td>${pct}</td><td>${games?(net>=0?"+":"")+net.toFixed(1):"—"}</td><td>${t.declaredDirection}</td></tr>`;}).join("");
+  $("standings-body").innerHTML=standings.map((t,i)=>{const games=t.wins+t.losses,net=games?(t.pointsFor-t.pointsAgainst)/games:0,pct=games?(t.wins/games).toFixed(3).replace(/^0/,""):"—",ours=t.id===viewerId;return `<tr class="${ours?"controlled-team-row":""}"><td><strong>#${i+1}</strong></td><td>${t.name}${ours?'<span class="controlled-star" title="Your organization">★</span>':""}</td><td>${t.conference}</td><td>${t.wins}-${t.losses}</td><td>${pct}</td><td>${games?(net>=0?"+":"")+net.toFixed(1):"—"}</td><td>${t.declaredDirection}</td></tr>`;}).join("");
   const rankings=powerRankings(league,viewerId,rankingConference,false);
   const snapshotDay=rankings[0]?.snapshotDay||0;$("ranking-update-note").textContent=snapshotDay?`Official week ${Math.ceil(snapshotDay/7)} snapshot · records and net ratings are current`:`Preseason snapshot · first update after game date 7`;
-  $("power-rankings-body").innerHTML=rankings.map(r=>{const move=r.preseasonRank?r.preseasonRank-r.rank:0,arrow=move>0?`▲${move}`:move<0?`▼${Math.abs(move)}`:"—",games=r.team.wins+r.team.losses;return `<tr><td><strong>#${r.rank}</strong> <small class="${move>0?"up":move<0?"down":""}">${arrow}</small></td><td>#${r.preseasonRank||"—"}</td><td>${r.team.name}</td><td>${r.team.conference}</td><td>${r.team.wins}-${r.team.losses}</td><td>${games?(r.net>=0?"+":"")+r.net.toFixed(1):"—"}</td><td>${r.team.declaredDirection}</td><td>${rankingExplanation(r,viewerId)}</td></tr>`;}).join("");
-  const teamId=Number($("scout-team-select").value),proPosition=$("pro-position").value,proSort=$("pro-sort").value,proRows=sortScoutingRows(rosterRows(teamId,viewerId).filter(x=>proPosition==="All"||x.p.position===proPosition),proSort,viewerId);
-  $("pro-scouting-body").innerHTML=proRows.map(({p,r})=>`<tr><td><button class="player-link" data-player-id="${p.id}"><strong>${p.name}</strong><small>${r.marketTier}</small></button><button class="scout-target inline-target" data-player-id="${p.id}" data-targeted="${r.targeted}">${r.targeted?"Stop scouting":"Target player"}</button></td><td>${p.position}/${p.secondary}</td><td>${p.age}</td><td>${r.overallLow}–${r.overallHigh}</td><td>${r.confidence}%${r.targeted?` · ${r.targetDays} days targeted`:""}</td></tr>`).join("");
-  const draftPosition=$("draft-position").value,draftSort=$("draft-sort").value,prospects=sortScoutingRows(league.prospects.map(p=>({p,r:scoutingReport(league,viewerId,p)})).filter(x=>draftPosition==="All"||x.p.position===draftPosition),draftSort,viewerId),slot=projectedDraftSlot(viewerId);$("draft-range-note").textContent=`Current record projects near draft slot ${slot} before the lottery. Range mode targets prospects around that portion of your board.`;
-  $("draft-board-body").innerHTML=prospects.map(({p,r},i)=>{const c=collegeAverages(p);return `<tr><td>#${i+1}</td><td><button class="player-link" data-player-id="${p.id}"><strong>${p.name}</strong><small>${p.college} · ${c.gp?`${c.ppg} PPG in ${c.gp} GP`:"No college games yet"}</small></button><button class="scout-target inline-target" data-player-id="${p.id}" data-targeted="${r.targeted}">${r.targeted?"Stop scouting":"Target prospect"}</button></td><td>${p.position}/${p.secondary}</td><td>${p.age}</td><td>${r.overallLow}–${r.overallHigh}</td><td>${r.estimates.potential.low}–${r.estimates.potential.high}</td><td>${r.confidence}%${r.targeted?` · ${r.targetDays} days targeted`:""}</td></tr>`;}).join("");
+  $("power-rankings-body").innerHTML=rankings.map(r=>{const move=r.preseasonRank?r.preseasonRank-r.rank:0,arrow=move>0?`▲${move}`:move<0?`▼${Math.abs(move)}`:"—",games=r.team.wins+r.team.losses,ours=r.team.id===viewerId;return `<tr class="${ours?"controlled-team-row":""}"><td><strong>#${r.rank}</strong> <small class="${move>0?"up":move<0?"down":""}">${arrow}</small></td><td>#${r.preseasonRank||"—"}</td><td>${r.team.name}${ours?'<span class="controlled-star" title="Your organization">★</span>':""}</td><td>${r.team.conference}</td><td>${r.team.wins}-${r.team.losses}</td><td>${games?(r.net>=0?"+":"")+r.net.toFixed(1):"—"}</td><td>${r.team.declaredDirection}</td><td>${rankingExplanation(r,viewerId)}</td></tr>`;}).join("");
+  const teamId=Number($("scout-team-select").value),proPosition=$("pro-position").value,proSort=$("pro-sort").value,allProRows=sortScoutingRows(rosterRows(teamId,viewerId).filter(x=>proPosition==="All"||x.p.position===proPosition),proSort,viewerId),assignedProRows=allProRows.filter(x=>x.r.targeted),proRows=proBoardMode==="assigned"?assignedProRows:allProRows;
+  $("assigned-pro-count").textContent=assignedProRows.length;document.querySelectorAll(".pro-view-tab").forEach(x=>x.classList.toggle("active",x.dataset.proView===proBoardMode));$("pro-scouting-body").innerHTML=proRows.length?proRows.map(({p,r})=>`<tr><td><button class="player-link" data-player-id="${p.id}"><strong>${p.name}</strong><small>${r.marketTier}</small></button><button class="scout-target inline-target" data-player-id="${p.id}" data-targeted="${r.targeted}">${r.targeted?"Stop scouting":"Target player"}</button></td><td>${p.position}/${p.secondary}</td><td>${p.age}</td><td>${r.overallLow}–${r.overallHigh}</td><td>${scoutingKnowledgeText(r)}</td></tr>`).join(""):`<tr><td colspan="5" class="empty-state">No players on this roster are currently assigned.</td></tr>`;
+  const draftPosition=$("draft-position").value,draftSort=$("draft-sort").value,allProspects=sortScoutingRows(league.prospects.map(p=>({p,r:scoutingReport(league,viewerId,p)})).filter(x=>draftPosition==="All"||x.p.position===draftPosition),draftSort,viewerId),assigned=allProspects.filter(x=>x.r.targeted),prospects=draftBoardMode==="assigned"?assigned:allProspects,slot=projectedDraftSlot(viewerId);
+  $("draft-range-note").textContent=`Current record projects near draft slot ${slot} before the lottery. Range mode targets prospects around that portion of your board.`;$("assigned-prospect-count").textContent=assigned.length;$("auto-assign-draft").textContent=assigned.length?"✓ Scouts assigned":"Assign scouts automatically";$("auto-assign-draft").classList.toggle("assigned",assigned.length>0);document.querySelectorAll("[data-draft-view]").forEach(x=>x.classList.toggle("active",x.dataset.draftView===draftBoardMode));
+  $("draft-board-body").innerHTML=prospects.length?prospects.map(({p,r})=>{const c=collegeAverages(p),rank=allProspects.findIndex(x=>x.p.id===p.id)+1;return `<tr><td>#${rank}</td><td><button class="player-link" data-player-id="${p.id}"><strong>${p.name}</strong><small>${p.college} · ${c.gp?`${c.ppg} PPG in ${c.gp} GP`:"No college games yet"}</small></button><button class="scout-target inline-target" data-player-id="${p.id}" data-targeted="${r.targeted}">${r.targeted?"Stop scouting":"Target prospect"}</button></td><td>${p.position}/${p.secondary}</td><td>${p.age}</td><td>${r.overallLow}–${r.overallHigh}</td><td>${r.estimates.potential.low}–${r.estimates.potential.high}</td><td>${scoutingKnowledgeText(r)}</td></tr>`;}).join(""):`<tr><td colspan="7" class="empty-state">No prospects are currently assigned. Target one manually or use automatic assignment.</td></tr>`;
 }
+
+function scoutingKnowledgeText(report){return `${report.confidence}%${report.targeted?` · ${report.targetDays} days targeted`:report.retainedKnowledge?` · ${report.targetDays} days retained`:""}`;}
 
 function bindDynamicControls(viewerId){
   document.querySelectorAll(".player-link").forEach(b=>b.addEventListener("click",()=>openPlayer(Number(b.dataset.playerId),viewerId)));
   document.querySelectorAll(".direction-select").forEach(s=>s.addEventListener("change",()=>{setDeclaredDirection(league,viewerId,s.value,true);render();saveLeague();}));
   document.querySelectorAll(".sim-to-game").forEach(b=>b.addEventListener("click",()=>simulateFromUi(Math.max(0,Number(b.dataset.day)-1-league.day))));
   document.querySelectorAll(".box-score").forEach(b=>b.addEventListener("click",()=>openBoxScore(Number(b.dataset.day),viewerId)));
-  document.querySelectorAll(".scout-target").forEach(b=>b.addEventListener("click",()=>{setScoutingTarget(league,viewerId,Number(b.dataset.playerId),b.dataset.targeted!=="true");render();saveLeague();}));
+  document.querySelectorAll(".scout-target").forEach(b=>b.addEventListener("click",()=>{const playerId=Number(b.dataset.playerId),assigning=b.dataset.targeted!=="true",player=league.players.find(p=>p.id===playerId)||league.prospects.find(p=>p.id===playerId);setScoutingTarget(league,viewerId,playerId,assigning);if(assigning){if(player?.teamId===null)draftBoardMode="assigned";else proBoardMode="assigned";}render();saveLeague();showToast(assigning?`✓ Scout assigned to ${player.name}`:`Scouting stopped for ${player.name}`);}));
   $("advance-playoffs")?.addEventListener("click",()=>{advancePostseason(league);render();saveLeague();});
+  $("simulate-playoff-game")?.addEventListener("click",()=>{simulatePostseasonGame(league);render();saveLeague();});
+  $("simulate-playoff-round")?.addEventListener("click",()=>{simulatePostseasonRound(league);render();saveLeague();});
 }
 
 function renderSeasonCenter(viewerId){
@@ -133,11 +162,45 @@ function renderSeasonCenter(viewerId){
   $("season-label").textContent=league.phase==="Offseason"?"2027 OFFSEASON":league.phase==="Postseason"?"2027 POSTSEASON":"2026–27 REGULAR SEASON";$("season-status").textContent=league.phase==="Offseason"?"Season complete":league.phase==="Postseason"?(league.postseason?.stage||"Play-in tournament"):league.day>=82?"Regular season complete":league.day===0?"Opening night":`Game date ${league.day} of 82`;
   $("team-record").textContent=`${team.wins}–${team.losses}`;$("record-team").textContent=team.name;$("conference-rank").textContent=league.day?`#${rank}`:"—";
   $("recent-results").innerHTML=recent.length?recent.map(g=>{const home=g.homeId===viewerId,won=(home?g.homeScore:g.awayScore)>(home?g.awayScore:g.homeScore),opp=league.teams[home?g.awayId:g.homeId];return `<b class="${won?"win":"loss"}">${won?"W":"L"}</b> ${home?g.homeScore:g.awayScore}–${home?g.awayScore:g.homeScore} vs ${opp.name}`;}).join("<br>"):"No games played";
-  $("sim-day").disabled=league.day>=82;$("sim-ten").disabled=league.day>=82;renderPostseason();
+  $("sim-day").disabled=league.day>=82;$("sim-ten").disabled=league.day>=82;updatePlayoffsTab();renderPostseason();
 }
 
-function seriesHtml(s){const a=league.teams[s.a.teamId],b=league.teams[s.b.teamId],winner=league.teams[s.winner.teamId];return `<div class="series-card"><span>#${s.a.seed} ${a.name}</span><strong>${s.aWins}–${s.bWins}</strong><span>#${s.b.seed} ${b.name}</span><small>${winner.name} advances</small></div>`;}
-function renderPostseason(){const box=$("postseason-center");if(league.day<82){box.classList.add("hidden");return;}box.classList.remove("hidden");if(!league.postseason){box.innerHTML=`<div><p class="eyebrow">POSTSEASON</p><h2>Play-in tournament ready</h2><p class="subtitle">Seeds 7–10 in each conference enter the play-in. Seeds 1–6 qualified directly.</p></div><button id="advance-playoffs">Begin play-in</button>`;return;}const p=league.postseason;if(p.stage==="Season Complete"){box.innerHTML=`<div><p class="eyebrow">2027 CHAMPION</p><h2>${league.teams[p.champion].name}</h2><p class="subtitle">The league has entered the offseason.</p></div>`;return;}const groups=Object.entries(p.current).map(([name,series])=>`<section><h3>${name}</h3>${series.map(seriesHtml).join("")}</section>`).join("");box.innerHTML=`<div class="postseason-title"><div><p class="eyebrow">${p.stage.toUpperCase()}</p><h2>Postseason bracket</h2></div><button id="advance-playoffs">Advance round</button></div><div class="series-grid">${groups}</div>`;}
+function seriesHtml(s){
+  if(!s)return `<div class="series-card placeholder"><span>Matchup pending</span></div>`;
+  const a=league.teams[s.a.teamId],b=league.teams[s.b.teamId],winner=s.winner?league.teams[s.winner.teamId]:null,seed=x=>x.seed?`#${x.seed} `:"",started=(s.aWins||0)+(s.bWins||0)>0,last=s.games?.at(-1),aScore=last?(last.homeId===a.id?last.homeScore:last.awayScore):null,bScore=last?(last.homeId===b.id?last.homeScore:last.awayScore):null,lastWinner=last?league.teams[last.winnerId]:null;
+  const finalScore=last?`<div class="series-last-score"><span class="${last.winnerId===a.id?"winner":""}">${a.name} ${aScore}</span><span class="${last.winnerId===b.id?"winner":""}">${b.name} ${bScore}</span><small>Final · Game ${last.seriesGame} · ${lastWinner.name} won</small></div>`:"";
+  return `<div class="series-card"><span>${seed(s.a)}${a.name}</span><strong>${winner||started?`${s.aWins}–${s.bWins}`:"vs"}</strong><span>${seed(s.b)}${b.name}</span>${winner?`<small>${winner.name} advances</small>`:started?"<small>Series in progress</small>":"<small>Awaiting simulation</small>"}${finalScore}</div>`;
+}
+function completedRound(p,stage,conference){if(p.stage===stage)return p.current?.[conference]||[];const saved=[...(p.completed||[])].reverse().find(x=>x.stage===stage);return saved?.series?.[conference]||[];}
+function bracketColumn(title,series,count){const cards=[...series];while(cards.length<count)cards.push(null);return `<div class="bracket-round"><h4>${title}</h4>${cards.map(seriesHtml).join("")}</div>`;}
+function conferenceBracket(p,conference){
+  const seeds=p.seeds?.[conference],pendingPlayIn=seeds?[{a:seeds[6],b:seeds[7],aWins:0,bWins:0},{a:seeds[8],b:seeds[9],aWins:0,bWins:0}]:[],playInSeries=p.playIn?.[conference]?.games||completedRound(p,"Play-In",conference)||pendingPlayIn,first=completedRound(p,"First Round",conference),semis=completedRound(p,"Conference Semifinals",conference),conferenceFinal=completedRound(p,"Conference Finals",conference);
+  return `<section class="conference-bracket"><h3>${conference}</h3><div class="bracket-rounds">${bracketColumn("Play-In",playInSeries,3)}${bracketColumn("First Round",first,4)}${bracketColumn("Semifinals",semis,2)}${bracketColumn("Conference Final",conferenceFinal,1)}</div></section>`;
+}
+function updatePlayoffsTab(){const available=league.day>=82||league.phase==="Postseason"||league.phase==="Offseason";$("playoffs-tab").classList.toggle("hidden",!available);if(!available&&activeScreen==="playoffs-screen")switchScreen("roster-screen");}
+function renderPostseason(){
+  const box=$("postseason-center");if(league.day<82){box.innerHTML="";return;}
+  if(!league.postseason){box.innerHTML=`<div><p class="eyebrow">POSTSEASON</p><h2>Play-in tournament ready</h2><p class="subtitle">Seeds 7–10 in each conference enter the play-in. Seeds 1–6 qualified directly.</p></div><button id="advance-playoffs">Set postseason field</button>`;return;}
+  const p=league.postseason,finals=completedRound(p,"Finals","Finals"),finalsBlock=finals.length?`<section class="finals-bracket"><p class="eyebrow">LEAGUE FINALS</p><h3>Championship series</h3>${finals.map(seriesHtml).join("")}</section>`:"";if(p.stage==="Season Complete"){box.innerHTML=`<div class="postseason-title"><div><p class="eyebrow">2027 CHAMPION</p><h2>${league.teams[p.champion].name}</h2><p class="subtitle">The league has entered the offseason. The completed bracket remains below.</p></div></div><div class="bracket-shell">${finalsBlock}${conferenceBracket(p,"East")}${conferenceBracket(p,"West")}</div>`;return;}
+  const controlledSeed=controlledTeamId===null?null:Object.values(p.seeds||{}).flat().find(x=>x.teamId===controlledTeamId),controlledInPlayIn=controlledSeed?.seed>=7&&controlledSeed?.seed<=10;
+  box.innerHTML=`<div class="postseason-title"><div><p class="eyebrow">${p.stage.toUpperCase()}</p><h2>Postseason bracket</h2><p class="subtitle">${p.stage==="Play-In"&&controlledInPlayIn?`Your team is the #${controlledSeed.seed} seed. Advance the next game across every active play-in matchup, or complete the tournament.`:"Advance the next game across every active series, or finish the entire current round."}</p></div><div class="postseason-actions"><button id="simulate-playoff-game" class="ghost">Sim next game · all series</button><button id="simulate-playoff-round">Simulate current round</button></div></div><div class="bracket-shell">${finalsBlock}${conferenceBracket(p,"East")}${conferenceBracket(p,"West")}</div>`;
+}
+
+function latestTeamGame(teamId){const playoff=(league.postseason?.results||[]).filter(g=>g.homeId===teamId||g.awayId===teamId).at(-1);return playoff||league.results.filter(g=>g.homeId===teamId||g.awayId===teamId).at(-1)||null;}
+function gameWinnerId(game){return game.winnerId??(game.homeScore>game.awayScore?game.homeId:game.awayId);}
+function scoreBoardHtml(game){
+  const winnerId=gameWinnerId(game),away=league.teams[game.awayId],home=league.teams[game.homeId];
+  return `<div class="latest-scoreboard"><div class="${winnerId===away.id?"winner":""}"><span>${away.name}</span><strong>${game.awayScore}</strong>${winnerId===away.id?"<em>WINNER</em>":""}</div><span class="score-at">at</span><div class="${winnerId===home.id?"winner":""}"><span>${home.name}</span><strong>${game.homeScore}</strong>${winnerId===home.id?"<em>WINNER</em>":""}</div></div>`;
+}
+function gameBoxTableHtml(teamId,box,score){
+  if(!box)return `<section class="box-team"><h3>${league.teams[teamId].name} <span>${score}</span></h3><p class="summary">Detailed player stats were not retained in this compact save.</p></section>`;
+  return `<section class="box-team"><h3>${league.teams[teamId].name} <span>${score}</span></h3><div class="table-wrap"><table><thead><tr><th>Player</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>Game rating</th></tr></thead><tbody>${box.map(x=>{const p=league.players.find(y=>y.id===x.playerId);return `<tr><td><button class="player-link" data-player-id="${p.id}">${p.name}</button></td><td>${x.minutes}</td><td>${x.points}</td><td>${x.rebounds}</td><td>${x.assists}</td><td>${x.performance}</td></tr>`;}).join("")}</tbody></table></div></section>`;
+}
+function gameLabel(game){return game.postseason?`${game.stage} · Game ${game.seriesGame}`:`${gameDate(game.day-1)}`;}
+function renderLatestBoxScore(viewerId){
+  const panel=$("latest-box-score"),game=latestTeamGame(viewerId);panel.classList.toggle("hidden",!game);if(!game){panel.innerHTML="";return;}
+  const winner=league.teams[gameWinnerId(game)];panel.innerHTML=`<div class="section-title"><div><p class="eyebrow">MOST RECENT BOX SCORE</p><h2>${gameLabel(game)}</h2></div><span class="winner-note">${winner.name} won</span></div>${scoreBoardHtml(game)}<div class="latest-box-teams">${gameBoxTableHtml(game.awayId,game.awayBox,game.awayScore)}${gameBoxTableHtml(game.homeId,game.homeBox,game.homeScore)}</div>`;
+}
 
 function renderCalendar(viewerId){
   $("calendar-team-name").textContent=league.teams[viewerId].name;
@@ -152,35 +215,45 @@ function renderCalendar(viewerId){
 function openBoxScore(day,viewerId){
   const g=league.results.find(x=>x.day===day&&(x.homeId===viewerId||x.awayId===viewerId));
   if(!g)return;
-  const table=(teamId,box,score)=>`<section class="box-team"><h3>${league.teams[teamId].name} <span>${score}</span></h3><div class="table-wrap"><table><thead><tr><th>Player</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>Game rating</th></tr></thead><tbody>${box.map(x=>{const p=league.players.find(y=>y.id===x.playerId);return `<tr><td>${p.name}</td><td>${x.minutes}</td><td>${x.points}</td><td>${x.rebounds}</td><td>${x.assists}</td><td>${x.performance}</td></tr>`;}).join("")}</tbody></table></div></section>`;
-  $("dialog-content").innerHTML=`<p class="eyebrow">FINAL · ${gameDate(day-1)}</p><div class="box-score-title"><h2>${league.teams[g.awayId].name} ${g.awayScore}</h2><strong>at</strong><h2>${league.teams[g.homeId].name} ${g.homeScore}</h2></div>${table(g.awayId,g.awayBox,g.awayScore)}${table(g.homeId,g.homeBox,g.homeScore)}`;
+  $("dialog-content").innerHTML=`<p class="eyebrow">FINAL · ${gameDate(day-1)}</p>${scoreBoardHtml(g)}<div class="latest-box-teams">${gameBoxTableHtml(g.awayId,g.awayBox,g.awayScore)}${gameBoxTableHtml(g.homeId,g.homeBox,g.homeScore)}</div>`;
+  $("dialog-content").querySelectorAll(".player-link").forEach(b=>b.addEventListener("click",()=>openPlayer(Number(b.dataset.playerId),viewerId)));
   $("player-dialog").showModal();
 }
 
 function historyHtml(player){
   if(player.teamId===null){const c=collegeAverages(player),row=c.gp?`<tr class="current-season"><td>2026-27</td><td>College · Current · ${player.college}</td><td>${player.age}</td><td>${c.gp}</td><td>${c.mpg}</td><td>${c.ppg}</td><td>${c.rpg}</td><td>${c.apg}</td><td>${c.fg}</td><td>${c.three}</td></tr>`:`<tr><td colspan="10">The current college season has not begun; no production has been recorded.</td></tr>`;return `<div class="history"><p class="eyebrow">BASKETBALL HISTORY</p><div class="table-wrap"><table><thead><tr><th>Season</th><th>Level</th><th>Age</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG%</th><th>3P%</th></tr></thead><tbody>${row}</tbody></table></div></div>`;}
   const current=seasonAverages(player),currentRow=current.gp?`<tr class="current-season"><td>2026-27</td><td>Pro · Current</td><td>${player.age}</td><td>${current.gp}</td><td>${current.mpg}</td><td>${current.ppg}</td><td>${current.rpg}</td><td>${current.apg}</td><td>${current.fg}</td><td>${current.three}</td></tr>`:"";
-  return `<div class="history"><p class="eyebrow">BASKETBALL HISTORY</p><div class="table-wrap"><table><thead><tr><th>Season</th><th>Level</th><th>Age</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG%</th><th>3P%</th></tr></thead><tbody>${currentRow}${player.history.map(s=>`<tr><td>${s.season}</td><td>${s.level}${s.team?` · ${s.team}`:""}</td><td>${s.age}</td><td>${s.games}</td><td>${s.mpg}</td><td>${s.ppg}</td><td>${s.rpg}</td><td>${s.apg}</td><td>${s.fg}</td><td>${s.three}</td></tr>`).join("")}</tbody></table></div></div>`;
+  return `<div class="history"><p class="eyebrow">BASKETBALL HISTORY</p><div class="table-wrap"><table><thead><tr><th>Season</th><th>Level</th><th>Age</th><th>GP</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>FG%</th><th>3P%</th></tr></thead><tbody>${currentRow}${player.history.map(s=>`<tr><td>${s.season}</td><td>${s.level}${s.team?` · ${s.team}`:""}</td><td>${s.age}</td><td>${s.games}</td><td>${s.mpg}</td><td>${s.ppg}</td><td>${s.rpg}</td><td>${s.apg}</td><td>${s.fg}</td><td>${s.three}</td></tr>`).join("")}</tbody></table></div></div>${postseasonHistoryHtml(player)}`;
+}
+
+function postseasonHistoryHtml(player){
+  const averages=postseasonAverages(player);if(!averages.gp)return "";
+  const games=(league.postseason?.results||[]).map(game=>{const homeLine=game.homeBox?.find(x=>x.playerId===player.id),awayLine=game.awayBox?.find(x=>x.playerId===player.id),line=homeLine||awayLine;if(!line)return null;const teamId=homeLine?game.homeId:game.awayId,oppId=homeLine?game.awayId:game.homeId,ourScore=homeLine?game.homeScore:game.awayScore,oppScore=homeLine?game.awayScore:game.homeScore;return {game,line,oppId,won:ourScore>oppScore,ourScore,oppScore};}).filter(Boolean);
+  const rows=games.map(({game,line,oppId,won,ourScore,oppScore})=>`<tr><td>${game.stage}</td><td>G${game.seriesGame}</td><td>${league.teams[oppId].name}</td><td><b class="${won?"win":"loss"}">${won?"W":"L"}</b> ${ourScore}–${oppScore}</td><td>${line.minutes}</td><td>${line.points}</td><td>${line.rebounds}</td><td>${line.assists}</td><td>${line.performance}</td></tr>`).join("");
+  return `<div class="history postseason-history"><p class="eyebrow">2027 PLAYOFFS</p><div class="playoff-summary"><strong>${averages.gp} games</strong><span>${averages.ppg} PPG · ${averages.rpg} RPG · ${averages.apg} APG</span></div>${rows?`<div class="table-wrap"><table><thead><tr><th>Round</th><th>Game</th><th>Opponent</th><th>Result</th><th>MIN</th><th>PTS</th><th>REB</th><th>AST</th><th>Rating</th></tr></thead><tbody>${rows}</tbody></table></div>`:`<p class="summary">Playoff totals were preserved, but this compact save does not include each individual game log.</p>`}</div>`;
 }
 
 function openPlayer(playerId,viewerId){
   const p=league.players.find(x=>x.id===playerId)||league.prospects.find(x=>x.id===playerId),r=scoutingReport(league,viewerId,p),viewer=league.teams[viewerId],why=playerScoutExplanation(r,p,viewer),teamName=p.teamId===null?p.college:league.teams[p.teamId].name,perf=performanceSummary(p),overallDisplay=r.own?`${r.perceived} OVR`:`Estimated OVR ${r.overallLow}–${r.overallHigh}`,development=p.age<=25?`Projected peak ${r.estimates.potential.low}–${r.estimates.potential.high}`:p.age<=29?`Current ceiling ${r.estimates.potential.low}–${r.estimates.potential.high}`:`Career peak ${perf.careerPeak} · ${perf.trajectory}`,form=perf.currentForm===null?"No current-season games":`Playing like ${perf.currentForm} over the last ${Math.min(10,p.season.gp)} games`,seasonImpact=perf.seasonImpact===null?"Not established":`Playing like ${perf.seasonImpact} across the season`;
   $("dialog-content").innerHTML=`<p class="eyebrow">${r.isProspect?"DRAFT SCOUTING REPORT":r.own?"INTERNAL PLAYER CARD":"PRO SCOUTING REPORT"}</p><div class="player-heading"><div class="avatar">${p.name.split(" ").map(x=>x[0]).join("")}</div><div><h2>${p.name}${heat(p,r)}</h2><p class="dialog-meta">Age ${p.age} · ${p.position}/${p.secondary} · ${inches(p.height)} · ${teamName}</p><p class="dialog-meta">${r.isProspect?`2027 prospect · Projected pick No. ${p.draftPick}`:p.experience===0?`Rookie · Pick No. ${p.draftPick} · ${p.college}`:`${p.experience} years pro`} · ${r.marketTier}</p></div></div><div class="form-grid"><div><span>Current talent</span><strong>${overallDisplay} (${grade(r.perceived)})</strong></div><div><span>Current form</span><strong>${r.isProspect?"College production shown below":form}</strong></div><div><span>Season impact</span><strong>${r.isProspect?"Not yet an NBA player":seasonImpact}</strong></div><div><span>Development outlook</span><strong>${development}</strong></div></div><div class="scout-reasons"><div><strong>Projected role</strong><span>${why.projection}</span></div><div><strong>Attribute case</strong><span>Best traits: ${why.strengths.join(", ")}. Concerns: ${why.concerns.join(", ")}.</span></div><div><strong>Production evidence</strong><span>${why.evidence}</span></div><div><strong>Scouting context</strong><span>${why.staffNote}</span></div></div><div class="ratings dialog-ratings">${ATTRIBUTES.map(([key,label])=>{const e=r.estimates[key],displayLabel=key==="potential"?(p.age<=25?"Projected Peak":p.age<=29?"Current Ceiling":"Peak Estimate"):label;return `<div class="rating"><span>${displayLabel}</span><strong>${e.low}–${e.high}${commissioner?` <em class="true">(${e.true})</em>`:""}</strong></div>`}).join("")}</div>${historyHtml(p)}`;
-  $("player-dialog").showModal();
+  if(!$("player-dialog").open)$("player-dialog").showModal();
 }
 
 function switchScreen(screen){activeScreen=screen;document.querySelectorAll(".app-screen").forEach(x=>x.classList.toggle("hidden",x.id!==screen));document.querySelectorAll(".nav-tab").forEach(x=>x.classList.toggle("active",x.dataset.screen===screen));document.querySelectorAll(".trade-control").forEach(x=>x.classList.toggle("hidden",screen!=="trade-screen"));document.querySelector(".controls").classList.toggle("non-trade",screen!=="trade-screen");}
 
 function startMode(spectator){
-  controlledTeamId=spectator?null:Number($("setup-team").value);leagueName=$("league-name").value.trim()||"Basketball Universe";$("viewer-team").value=Number($("setup-team").value);applyModeUi();$("setup-screen").classList.add("closed");document.body.classList.remove("menu-open");populateOpponentTeams();populateScoutingTeams();render();saveLeague();
+  controlledTeamId=spectator?null:Number($("setup-team").value);leagueName=$("league-name").value.trim()||"Basketball Universe";$("viewer-team").value=Number($("setup-team").value);applyModeUi();$("setup-screen").classList.add("closed");document.body.classList.remove("menu-open");populateOpponentTeams();populateScoutingTeams();render();saveLeague();setTimeout(maybePromptScouting,0);
 }
 
 document.querySelectorAll(".nav-tab").forEach(b=>b.addEventListener("click",()=>switchScreen(b.dataset.screen)));
 document.querySelectorAll(".rank-filter").forEach(b=>b.addEventListener("click",()=>{rankingConference=b.dataset.conference;document.querySelectorAll(".rank-filter").forEach(x=>x.classList.toggle("active",x===b));render();}));
 document.querySelectorAll(".standings-filter").forEach(b=>b.addEventListener("click",()=>{standingsConference=b.dataset.conference;document.querySelectorAll(".standings-filter").forEach(x=>x.classList.toggle("active",x===b));render();}));
 document.querySelectorAll(".scouting-subtab").forEach(b=>b.addEventListener("click",()=>{document.querySelectorAll(".scouting-subtab").forEach(x=>x.classList.toggle("active",x===b));document.querySelectorAll(".scouting-section").forEach(x=>x.classList.toggle("hidden",x.id!==b.dataset.scoutingSection));}));
+document.querySelectorAll("[data-draft-view]").forEach(b=>b.addEventListener("click",()=>{draftBoardMode=b.dataset.draftView;render();}));
+document.querySelectorAll("[data-pro-view]").forEach(b=>b.addEventListener("click",()=>{proBoardMode=b.dataset.proView;render();}));
 $("start-gm").addEventListener("click",()=>startMode(false));$("start-spectator").addEventListener("click",()=>startMode(true));
 $("viewer-team").addEventListener("change",()=>{populateOpponentTeams();populateScoutingTeams();render();saveLeague();});$("target-team").addEventListener("change",render);$("scout-team-select").addEventListener("change",render);$("pro-sort").addEventListener("change",render);$("pro-position").addEventListener("change",render);$("draft-sort").addEventListener("change",render);$("draft-position").addEventListener("change",render);$("auto-assign-draft").addEventListener("click",()=>autoAssignDraft(Number($("viewer-team").value)));$("save-league").addEventListener("click",()=>saveLeague(true));$("return-menu").addEventListener("click",returnToMenu);$("sim-day").addEventListener("click",()=>simulateFromUi(1));$("sim-ten").addEventListener("click",()=>simulateFromUi(10));$("commissioner-toggle").addEventListener("click",()=>{commissioner=!commissioner;$("commissioner-toggle").textContent=`Commissioner view: ${commissioner?"on":"off"}`;render();});$("dialog-close").addEventListener("click",()=>$("player-dialog").close());$("player-dialog").addEventListener("click",e=>{if(e.target===$("player-dialog"))$("player-dialog").close();});
 $("reminder-auto").addEventListener("click",()=>{$("draft-auto-strategy").value="range";autoAssignDraft(controlledTeamId);$("scouting-reminder").close();});$("reminder-review").addEventListener("click",()=>{$("scouting-reminder").close();switchScreen("scouting-screen");const tab=document.querySelector('[data-scouting-section="players-section"]');tab.click();});$("reminder-manual").addEventListener("click",()=>$("scouting-reminder").close());
+$("menu-version").textContent=`Prototype v${GAME_VERSION}`;
 init(8242026);switchScreen(activeScreen);
 renderSavedLeagues();
