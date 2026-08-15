@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Front Office Basketball</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="menu-open">
+  <div id="save-toast" class="save-toast" role="status">✓ Saved successfully</div>
+  <section id="setup-screen" class="setup-screen">
+    <div class="setup-card panel">
+      <p class="eyebrow">FRONT OFFICE BASKETBALL</p><h1>Choose how to enter the league</h1>
+      <p class="summary">Create a named league, manage one locked-in organization, or watch all 30 AI front offices manage themselves.</p>
+      <label>League name<input id="league-name" maxlength="40" placeholder="My Basketball Universe"></label>
+      <label>Starting organization<select id="setup-team"></select></label>
+      <div class="setup-actions"><button id="start-gm">Manage this team</button><button id="start-spectator" class="ghost">Spectate the league</button></div>
+      <small>In spectator mode, selecting a team only changes what you are viewing. Every team remains AI-controlled.</small>
+      <div class="saved-leagues"><p class="eyebrow">SAVED LEAGUES</p><div id="saved-league-list"><span>No saved leagues yet.</span></div></div>
+    </div>
+  </section>
+  <header>
+    <div><p class="eyebrow">LEAGUE OFFICE / PRESEASON</p><h1>Front Office Basketball</h1><p class="subtitle">Every organization sees the league differently.</p></div>
+    <div class="league-pill"><strong>30</strong> teams · <strong id="player-count">450</strong> players</div>
+  </header>
+  <main>
+    <nav class="app-nav panel">
+      <button class="nav-tab active" data-screen="roster-screen">My Roster</button>
+      <button class="nav-tab" data-screen="trade-screen">Trade Center</button>
+      <button class="nav-tab" data-screen="calendar-screen">Calendar</button>
+      <button class="nav-tab" data-screen="scouting-screen">Scouting</button>
+    </nav>
+    <section class="controls panel two-controls">
+      <label><span id="viewer-label">Your organization</span><select id="viewer-team"></select></label>
+      <label class="trade-control">Compare or scout another team<select id="target-team"></select></label>
+      <button class="ghost" id="save-league">Save league</button>
+      <button class="ghost" id="return-menu">Save & return to menu</button>
+      <button class="ghost" id="commissioner-toggle">Commissioner view: off</button>
+    </section>
+    <section class="panel season-center">
+      <div class="season-top">
+        <div><p class="eyebrow" id="season-label">2026–27 REGULAR SEASON</p><h2 id="season-status">Opening night</h2></div>
+        <div class="sim-buttons"><button id="sim-day">Sim next day</button><button id="sim-ten">Sim 10 days</button></div>
+      </div>
+      <div class="season-grid">
+        <div><strong id="team-record">0–0</strong><span id="record-team">Your record</span></div>
+        <div><strong id="conference-rank">—</strong><span>League rank</span></div>
+        <div class="recent-box"><strong>Recent results</strong><span id="recent-results">No games played</span></div>
+      </div>
+      <div id="postseason-center" class="postseason-center hidden"></div>
+    </section>
+    <section id="trade-screen" class="app-screen team-comparison">
+      <article class="panel team-board">
+        <div class="team-board-title"><div><p class="eyebrow">YOUR ORGANIZATION</p><h2 id="own-name"></h2><p class="team-record-line" id="own-trade-record"></p></div><span class="tag">INTERNAL VIEW</span></div>
+        <div id="own-report" class="team-report"></div>
+        <div class="section-title roster-heading"><div><p class="eyebrow">CURRENT PLAYERS</p><h2>Roster</h2></div><span class="roster-note">Click a name for full player card</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent</th><th>Current form</th><th>Outlook</th><th>Contract</th></tr></thead><tbody id="own-roster"></tbody></table></div>
+      </article>
+      <article class="panel team-board">
+        <div class="team-board-title"><div><p class="eyebrow">SCOUTED ORGANIZATION</p><h2 id="opponent-name"></h2><p class="team-record-line" id="opponent-trade-record"></p></div><span class="tag" id="opponent-confidence"></span></div>
+        <div id="opponent-report" class="team-report"></div>
+        <div class="section-title roster-heading"><div><p class="eyebrow">SCOUTED PLAYERS</p><h2>Roster</h2></div><span class="roster-note">Ratings reflect your scouts</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent estimate</th><th>Current form</th><th>Outlook</th><th>Contract</th></tr></thead><tbody id="opponent-roster"></tbody></table></div>
+      </article>
+    </section>
+    <section id="roster-screen" class="app-screen hidden">
+      <article class="panel team-board single-board">
+        <div class="team-board-title"><div><p class="eyebrow">INTERNAL FRONT OFFICE</p><h2 id="roster-screen-name"></h2></div><span class="tag">PRIVATE ASSESSMENT</span></div>
+        <div id="roster-screen-report" class="team-report"></div>
+        <div class="section-title roster-heading"><div><p class="eyebrow">CURRENT PLAYERS</p><h2>My roster</h2></div><span class="roster-note">🔥 hot · 🥶 cold · click any player</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent</th><th>Current form</th><th>Season</th><th>Outlook</th><th>Contract</th></tr></thead><tbody id="roster-screen-players"></tbody></table></div>
+      </article>
+    </section>
+    <section id="calendar-screen" class="app-screen hidden">
+      <article class="panel calendar-panel">
+        <div class="section-title"><div><p class="eyebrow">2026–27 SCHEDULE</p><h2 id="calendar-team-name"></h2></div><span class="roster-note">Choose any future game to simulate directly to it</span></div>
+        <div id="calendar-body" class="calendar-months"></div>
+      </article>
+    </section>
+    <section id="scouting-screen" class="app-screen hidden scouting-layout">
+      <nav class="scouting-subnav panel"><button class="scouting-subtab active" data-scouting-section="standings-section">Standings</button><button class="scouting-subtab" data-scouting-section="rankings-section">Power Rankings</button><button class="scouting-subtab" data-scouting-section="players-section">Player Scouting</button></nav>
+      <article id="standings-section" class="panel scouting-panel standings-panel scouting-section">
+        <div class="section-title"><div><p class="eyebrow">LIVE STANDINGS</p><h2>League table</h2></div><div class="rank-filters"><button class="standings-filter active" data-conference="All">All 30</button><button class="standings-filter" data-conference="East">East</button><button class="standings-filter" data-conference="West">West</button></div></div>
+        <p class="summary">Standings update after every game date. Power rankings below remain your staff's weekly opinion.</p>
+        <div class="table-wrap"><table><thead><tr><th>Place</th><th>Team</th><th>Conf.</th><th>Record</th><th>PCT</th><th>Net</th><th>Direction</th></tr></thead><tbody id="standings-body"></tbody></table></div>
+      </article>
+      <article id="rankings-section" class="panel scouting-panel power-panel scouting-section hidden">
+        <div class="section-title"><div><p class="eyebrow">INTERNAL POWER RANKINGS</p><h2>League outlook</h2></div><div class="rank-filters"><button class="rank-filter active" data-conference="All">All 30</button><button class="rank-filter" data-conference="East">East</button><button class="rank-filter" data-conference="West">West</button></div></div>
+        <p class="summary">Built by your analytics and scouting staff. Rankings publish once per week so one result cannot cause a wild swing. <strong id="ranking-update-note"></strong></p>
+        <div class="table-wrap"><table><thead><tr><th>Live</th><th>Pre</th><th>Team</th><th>Conf.</th><th>Record</th><th>Net</th><th>Direction</th><th>Why are they here?</th></tr></thead><tbody id="power-rankings-body"></tbody></table></div>
+      </article>
+      <div id="players-section" class="scouting-section hidden scouting-player-sections">
+      <article class="panel scouting-panel">
+        <div class="section-title"><div><p class="eyebrow">PRO SCOUTING</p><h2>Target another roster</h2></div><label>Organization<select id="scout-team-select"></select></label></div>
+        <p class="summary">Targeted scouting narrows uncertainty over time. Your professional scouting quality determines how quickly the report improves.</p>
+        <div class="scouting-tools"><label>Sort<select id="pro-sort"><option value="overall">Highest suspected overall</option><option value="fit">Best team fit</option><option value="position">Position</option></select></label><label>Position<select id="pro-position"><option value="All">All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select></label></div>
+        <div class="table-wrap"><table><thead><tr><th>Player / assignment</th><th>Pos</th><th>Age</th><th>Talent estimate</th><th>Confidence</th></tr></thead><tbody id="pro-scouting-body"></tbody></table></div>
+      </article>
+      <article class="panel scouting-panel draft-panel">
+        <div class="section-title"><div><p class="eyebrow">2027 DRAFT CLASS</p><h2>Prospect board</h2></div><span class="roster-note">College production · projected peak · uncertain evaluations</span></div>
+        <div class="auto-scout-box"><label>Automatic assignment<select id="draft-auto-strategy"><option value="range">Around projected draft range</option><option value="best">Best available prospects</option><option value="position">Positions of need</option></select></label><button id="auto-assign-draft">Assign scouts automatically</button><small id="draft-range-note"></small></div>
+        <div class="scouting-tools"><label>Sort<select id="draft-sort"><option value="overall">Highest suspected overall</option><option value="fit">Best team fit</option><option value="position">Position</option></select></label><label>Position<select id="draft-position"><option value="All">All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select></label></div>
+        <div class="table-wrap"><table><thead><tr><th>Rank</th><th>Prospect / assignment</th><th>Pos</th><th>Age</th><th>Current talent</th><th>Projected peak</th><th>Confidence</th></tr></thead><tbody id="draft-board-body"></tbody></table></div>
+      </article>
+      </div>
+    </section>
+  </main>
+  <dialog id="player-dialog"><button class="dialog-close" id="dialog-close" aria-label="Close">×</button><div id="dialog-content"></div></dialog>
+  <dialog id="scouting-reminder" class="reminder-dialog">
+    <p class="eyebrow">SCOUTING CHECK-IN</p><h2>Your draft scouts are still unassigned</h2>
+    <p class="summary">Ten game dates have passed. Would you like the front office to automatically focus on prospects near your currently projected draft range?</p>
+    <div class="reminder-actions"><button id="reminder-auto">Assign automatically</button><button id="reminder-review" class="ghost">Review strategies</button><button id="reminder-manual" class="ghost">Keep scouting manually</button></div>
+  </dialog>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
