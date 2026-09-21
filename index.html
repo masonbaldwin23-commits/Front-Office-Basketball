@@ -4,19 +4,52 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Front Office Basketball</title>
-  <link rel="stylesheet" href="styles.css?v=0.7.0-alpha">
+  <link rel="stylesheet" href="styles.css?v=0.20.0-alpha">
 </head>
 <body class="menu-open">
   <div id="save-toast" class="save-toast" role="status"></div>
   <section id="setup-screen" class="setup-screen">
     <div class="setup-card panel">
-      <div class="setup-kicker"><p class="eyebrow">FRONT OFFICE BASKETBALL</p><span id="menu-version" class="version-badge">Prototype v0.7.0-alpha</span></div><h1>Choose how to enter the league</h1>
+      <div class="setup-kicker"><p class="eyebrow">FRONT OFFICE BASKETBALL</p><span id="menu-version" class="version-badge">Prototype v0.20.0-alpha</span></div><h1>Choose how to enter the league</h1>
       <p class="summary">Create a named league, manage one locked-in organization, or watch all 30 AI front offices manage themselves.</p>
       <label>League name<input id="league-name" maxlength="40" placeholder="My Basketball Universe"></label>
       <label>Starting organization<select id="setup-team"></select></label>
+      <label class="appearance-setting">Background color<select id="menu-theme" aria-describedby="theme-help"><option value="dark">Dark navy (current)</option><option value="slate">Brighter slate</option><option value="light">Light gray (bright rooms)</option></select><small id="theme-help">This display preference applies to every league and stays selected on this browser.</small></label>
       <div class="setup-actions"><button id="start-gm">Manage this team</button><button id="start-spectator" class="ghost">Spectate the league</button></div>
       <small>In spectator mode, selecting a team only changes what you are viewing. Every team remains AI-controlled.</small>
-      <div class="saved-leagues"><p class="eyebrow">SAVED LEAGUES</p><div id="saved-league-list"><span>No saved leagues yet.</span></div></div>
+      <div class="saved-leagues"><div class="saved-leagues-heading"><p class="eyebrow">SAVED LEAGUES</p><span id="save-slot-count">0/5 slots used</span></div><div id="saved-league-list"><span>No saved leagues yet.</span></div></div>
+    </div>
+  </section>
+  <section id="rules-screen" class="setup-screen rules-screen closed">
+    <div class="setup-card rules-card panel">
+      <div class="setup-kicker"><div><p class="eyebrow">LEAGUE CREATION</p><span id="rules-league-summary">Choose your financial system</span></div><button id="rules-back" class="ghost" type="button">← Back</button></div>
+      <h1>Choose league rules</h1>
+      <p class="summary">This choice controls salary matching and apron restrictions for the entire save. It cannot be changed after the league begins.</p>
+      <div class="rule-preset-grid">
+        <label class="rule-preset-card selected">
+          <input type="radio" name="financial-rule-preset" value="modern" checked>
+          <span class="rule-choice-heading"><strong>Modern NBA rules</strong><em>Recommended</em></span>
+          <small>Current soft cap, luxury tax, first and second aprons, and apron-based trade restrictions.</small>
+          <ul><li>Current 2026–27 thresholds</li><li>Expanded trade matching below the first apron</li><li>100% matching and second-apron aggregation limits</li></ul>
+        </label>
+        <label class="rule-preset-card">
+          <input type="radio" name="financial-rule-preset" value="simplified">
+          <span class="rule-choice-heading"><strong>Simplified salary cap</strong><em>Casual</em></span>
+          <small>Keeps meaningful financial decisions without the NBA’s apron system.</small>
+          <ul><li>Soft salary cap and luxury-tax line</li><li>No first or second apron</li><li>One universal 125% salary-matching rule above the cap</li></ul>
+        </label>
+      </div>
+      <div class="rules-comparison" aria-label="Financial rule comparison"><div><span>Rule</span><strong>Modern NBA</strong><strong>Simplified</strong></div><div><span>Soft salary cap</span><b>Yes</b><b>Yes</b></div><div><span>Luxury tax</span><b>Yes</b><b>Yes</b></div><div><span>First and second aprons</span><b>Yes</b><b>No</b></div><div><span>Apron trade restrictions</span><b>Yes</b><b>No</b></div></div>
+      <section class="draft-class-settings" aria-labelledby="draft-class-settings-title">
+        <div><p class="eyebrow">PLAYER DEVELOPMENT</p><h2 id="draft-class-settings-title">Draft class strength</h2><p>Controls rookie readiness and peak potential. Scouting uncertainty still applies, so every outcome remains an estimate.</p></div>
+        <div class="draft-class-grid">
+          <label class="draft-class-card"><input type="radio" name="draft-class-strength" value="weak"><span><strong>Weak</strong><small>Few immediate contributors; star upside is scarce.</small></span></label>
+          <label class="draft-class-card selected"><input type="radio" name="draft-class-strength" value="realistic" checked><span><strong>Realistic</strong><em>Recommended</em><small>Grounded NBA distribution with rare stars and meaningful second-round risk.</small></span></label>
+          <label class="draft-class-card"><input type="radio" name="draft-class-strength" value="strong"><span><strong>Strong</strong><small>More lottery-ready talent and several credible All-Star ceilings.</small></span></label>
+          <label class="draft-class-card"><input type="radio" name="draft-class-strength" value="historic"><span><strong>Historic</strong><small>A deliberately loaded, era-defining class with superstar outcomes.</small></span></label>
+        </div>
+      </section>
+      <div class="rules-footer-actions"><button id="rules-guide-open" class="ghost" type="button">Learn the financial rules</button><button id="confirm-rules" type="button">Start league with Modern NBA rules</button></div>
     </div>
   </section>
   <header>
@@ -25,11 +58,16 @@
   </header>
   <main>
     <nav class="app-nav panel">
-      <button class="nav-tab active" data-screen="roster-screen">My Roster</button>
+      <button class="nav-tab active" data-screen="roster-screen">My Organization</button>
+      <button class="nav-tab" data-screen="finances-screen">Finances</button>
       <button class="nav-tab" data-screen="trade-screen">Trade Center</button>
+      <button class="nav-tab" data-screen="unsigned-screen">Unsigned Players</button>
       <button class="nav-tab" data-screen="calendar-screen">Calendar</button>
       <button id="playoffs-tab" class="nav-tab hidden" data-screen="playoffs-screen">Playoffs</button>
+      <button id="draft-tab" class="nav-tab hidden" data-screen="draft-screen">Draft</button>
+      <button id="offseason-tab" class="nav-tab hidden" data-screen="offseason-screen">Free Agency</button>
       <button class="nav-tab" data-screen="scouting-screen">Scouting</button>
+      <button class="nav-tab" data-screen="history-screen">League History</button>
     </nav>
     <section class="controls panel two-controls">
       <label><span id="viewer-label">Your organization</span><select id="viewer-team"></select></label>
@@ -50,36 +88,111 @@
       </div>
     </section>
     <section id="trade-screen" class="app-screen team-comparison">
+      <article class="panel trade-builder">
+        <div class="section-title"><div><p class="eyebrow">TRADE PROPOSAL</p><h2>Build an offer</h2></div><span class="tag">AI GM EVALUATION</span></div>
+        <p id="trade-builder-note" class="summary">Select players from both rosters. The other team's GM will evaluate talent, age, contract, fit, direction and cornerstone status.</p>
+        <div class="trade-package-grid">
+          <section><strong id="trade-sending-title">You send</strong><div id="trade-offered-list" class="trade-asset-list"></div><div class="trade-pick-picker"><select id="offered-pick-select" aria-label="Your available draft picks"></select><button id="add-offered-pick" class="ghost">Add pick</button></div><small id="trade-offered-salary"></small></section>
+          <span class="trade-swap" aria-hidden="true">⇄</span>
+          <section><strong id="trade-receiving-title">Other team sends</strong><div id="trade-requested-list" class="trade-asset-list"></div><div class="trade-pick-picker"><select id="requested-pick-select" aria-label="Other team's available draft picks"></select><button id="add-requested-pick" class="ghost">Add pick</button></div><small id="trade-requested-salary"></small></section>
+        </div>
+        <div id="trade-cap-summary" class="trade-cap-summary"></div>
+        <div class="trade-actions"><button id="clear-trade" class="ghost">Clear offer</button><button id="submit-trade">Submit to AI GM</button></div>
+        <div id="trade-response" class="trade-response hidden" aria-live="polite"></div>
+      </article>
       <article class="panel team-board">
         <div class="team-board-title"><div><p class="eyebrow">YOUR ORGANIZATION</p><h2 id="own-name"></h2><p class="team-record-line" id="own-trade-record"></p></div><span class="tag">INTERNAL VIEW</span></div>
         <div id="own-report" class="team-report"></div>
         <div class="section-title roster-heading"><div><p class="eyebrow">CURRENT PLAYERS</p><h2>Roster</h2></div><span class="roster-note">Click a name for full player card</span></div>
-        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent</th><th>Current form</th><th>Outlook</th><th>Contract</th></tr></thead><tbody id="own-roster"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent</th><th>Current form</th><th>Outlook</th><th>Contract</th><th>Offer</th></tr></thead><tbody id="own-roster"></tbody></table></div>
       </article>
       <article class="panel team-board">
         <div class="team-board-title"><div><p class="eyebrow">SCOUTED ORGANIZATION</p><h2 id="opponent-name"></h2><p class="team-record-line" id="opponent-trade-record"></p></div><span class="tag" id="opponent-confidence"></span></div>
         <div id="opponent-report" class="team-report"></div>
-        <div class="section-title roster-heading"><div><p class="eyebrow">SCOUTED PLAYERS</p><h2>Roster</h2></div><span class="roster-note">Ratings reflect your scouts</span></div>
-        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent estimate</th><th>Current form</th><th>Outlook</th><th>Contract</th></tr></thead><tbody id="opponent-roster"></tbody></table></div>
+        <div class="section-title roster-heading"><div><p class="eyebrow">SCOUTED PLAYERS</p><h2>Roster</h2></div><span class="roster-note">Ratings reflect your scouts · request labels reflect their AI GM</span></div>
+        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent estimate</th><th>Current form</th><th>Outlook</th><th>Contract</th><th>Request</th></tr></thead><tbody id="opponent-roster"></tbody></table></div>
+      </article>
+      <article class="panel trade-history-panel">
+        <div class="section-title"><div><p class="eyebrow">COMPLETED</p><h2>Completed trades</h2></div><span class="roster-note">Latest transaction first · player names remain clickable</span></div>
+        <div id="completed-trades-list" class="completed-trades-list"><p class="empty-state">No completed trades yet.</p></div>
       </article>
     </section>
     <section id="roster-screen" class="app-screen hidden">
-      <article id="latest-box-score" class="panel latest-game-panel hidden"></article>
-      <article class="panel team-board single-board">
-        <div class="team-board-title"><div><p class="eyebrow">INTERNAL FRONT OFFICE</p><h2 id="roster-screen-name"></h2></div><span class="tag">PRIVATE ASSESSMENT</span></div>
-        <div id="roster-screen-report" class="team-report"></div>
-        <div class="section-title roster-heading"><div><p class="eyebrow">CURRENT PLAYERS</p><h2>My roster</h2></div><span class="roster-note">🔥 hot · 🥶 cold · click any player</span></div>
-        <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent</th><th>Current form</th><th>Season</th><th>Outlook</th><th>Contract</th></tr></thead><tbody id="roster-screen-players"></tbody></table></div>
+      <nav class="organization-subnav panel" aria-label="Organization sections">
+        <button class="organization-subtab active" data-organization-view="roster">Roster</button>
+        <button class="organization-subtab" data-organization-view="staff">Front Office</button>
+        <button class="organization-subtab" data-organization-view="rotation">Rotation &amp; Health</button>
+      </nav>
+      <div id="organization-roster-view">
+        <article id="latest-box-score" class="panel latest-game-panel hidden"></article>
+        <article class="panel team-board single-board">
+          <div class="team-board-title"><div><p class="eyebrow">INTERNAL FRONT OFFICE</p><h2 id="roster-screen-name"></h2></div><span class="tag">PRIVATE ASSESSMENT</span></div>
+          <div id="roster-screen-report" class="team-report"></div>
+          <div class="section-title roster-heading"><div><p class="eyebrow">CURRENT PLAYERS</p><h2>Roster</h2></div><span class="roster-note">🔥 hot · 🥶 cold · click any player</span></div>
+          <div class="table-wrap"><table><thead><tr><th>Player</th><th>Pos</th><th>Age</th><th>Talent</th><th>Current form</th><th>Season</th><th>Outlook</th><th>Contract</th></tr></thead><tbody id="roster-screen-players"></tbody></table></div>
+        </article>
+      </div>
+      <div id="organization-staff-view" class="hidden">
+        <article class="panel organization-staff-panel">
+          <div class="section-title"><div><p class="eyebrow">BASKETBALL OPERATIONS</p><h2 id="organization-staff-name">Front office</h2></div><span class="tag">STAFF CONTRACTS</span></div>
+          <p class="summary">Coaches influence game execution, player development shapes progression, and scouts determine evaluation accuracy, assignment speed and active coverage.</p>
+          <div id="organization-staff-summary" class="organization-staff-summary"></div>
+          <div class="staff-section-heading"><div><p class="eyebrow">CURRENT STAFF</p><h3>Department</h3></div><span class="roster-note">Click a card for contract details or to make a change</span></div>
+          <div id="organization-staff-grid" class="organization-staff-grid"></div>
+          <section class="staff-market-panel">
+            <div class="staff-section-heading"><div><p class="eyebrow">AVAILABLE STAFF</p><h3>Hiring market</h3><span class="staff-market-note">Top staff are usually under contract. AI teams actively fill vacancies and pursue major upgrades.</span></div><label>Role<select id="staff-market-role"><option value="All">All roles</option><option>Head Coach</option><option>Player Development Director</option><option>Head Scout</option><option>Pro Scout</option><option>College Scout</option></select></label></div>
+            <div class="table-wrap staff-market-table"><table><thead><tr><th>Candidate</th><th>Role</th><th>Grade</th><th>Specialty</th><th>Key skills</th><th>Asking</th><th>Offer</th></tr></thead><tbody id="staff-market-body"></tbody></table></div>
+          </section>
+          <section class="staff-transactions-panel"><div class="staff-section-heading"><div><p class="eyebrow">ORGANIZATION LOG</p><h3>Recent staff moves</h3></div></div><div id="staff-transaction-list"></div></section>
+        </article>
+      </div>
+      <div id="organization-rotation-view" class="hidden">
+        <article class="panel rotation-management-panel">
+          <div class="section-title"><div><p class="eyebrow">BASKETBALL STRATEGY</p><h2 id="rotation-team-name">Rotation &amp; health</h2></div><span id="rotation-control-tag" class="tag">240 TEAM MINUTES</span></div>
+          <p class="summary">Set the offensive and defensive identity, distribute 240 minutes, and monitor fatigue and injuries. Injured players are automatically removed and their minutes are redistributed until they return.</p>
+          <div id="rotation-management-body"></div>
+        </article>
+      </div>
+    </section>
+    <section id="finances-screen" class="app-screen hidden">
+      <article class="panel finances-panel">
+        <div class="section-title"><div><p class="eyebrow">BASKETBALL OPERATIONS</p><h2 id="finances-team-name">Finances &amp; cap sheet</h2></div><div class="finance-guide-actions"><button id="finance-guide-open" class="ghost" type="button">Cap rules guide</button><span id="finances-rule-tag" class="tag">MODERN NBA RULES</span></div></div>
+        <p class="summary">Current payroll, future commitments and contract decisions for the organization you are viewing. Click any player for the complete contract.</p>
+        <div id="finances-body"></div>
       </article>
     </section>
     <section id="calendar-screen" class="app-screen hidden">
       <article class="panel calendar-panel">
-        <div class="section-title"><div><p class="eyebrow">2026–27 SCHEDULE</p><h2 id="calendar-team-name"></h2></div><span class="roster-note">Choose any future game to simulate directly to it</span></div>
+        <div class="section-title"><div><p id="calendar-season-label" class="eyebrow">2026–27 SCHEDULE</p><h2 id="calendar-team-name"></h2></div><span class="roster-note">Choose any future game to simulate directly to it</span></div>
         <div id="calendar-body" class="calendar-months"></div>
       </article>
     </section>
     <section id="playoffs-screen" class="app-screen hidden">
       <article class="panel playoffs-panel"><div id="postseason-center" class="postseason-center"></div></article>
+    </section>
+    <section id="draft-screen" class="app-screen hidden draft-room-layout">
+      <article class="panel draft-room-panel">
+        <div class="section-title"><div><p class="eyebrow">OFFSEASON</p><h2 id="draft-room-title">2027 NBA Draft</h2></div><span id="draft-status-tag" class="tag">LOTTERY PENDING</span></div>
+        <div id="draft-room-body"></div>
+      </article>
+      <article class="panel draft-order-panel">
+        <div class="section-title"><div><p class="eyebrow">PICK OWNERSHIP</p><h2>Official draft order</h2></div><span class="roster-note">Traded picks follow their current owner</span></div>
+        <div id="draft-order-body"></div>
+      </article>
+    </section>
+    <section id="offseason-screen" class="app-screen hidden">
+      <article class="panel offseason-panel">
+        <div class="section-title"><div><p class="eyebrow">ROSTER BUILDING</p><h2 id="offseason-title">Offseason</h2></div><span id="offseason-stage-tag" class="tag">LOCKED</span></div>
+        <p class="summary">Resolve contract options, manage cap holds, negotiate with free agents, and complete the roster before opening night.</p>
+        <div id="offseason-body"></div>
+      </article>
+    </section>
+    <section id="unsigned-screen" class="app-screen hidden">
+      <article class="panel unsigned-players-panel">
+        <div class="section-title"><div><p class="eyebrow">LEAGUE PLAYER POOL</p><h2 id="unsigned-team-name">Currently unsigned players</h2></div><span id="unsigned-player-count" class="tag">0 AVAILABLE</span></div>
+        <p class="summary">Veterans who are not under contract with any organization. Your staff's talent estimate, fit grade and player interest update with the team you are viewing.</p>
+        <div id="unsigned-players-body"></div>
+      </article>
     </section>
     <section id="scouting-screen" class="app-screen hidden scouting-layout">
       <nav class="scouting-subnav panel"><button class="scouting-subtab active" data-scouting-section="standings-section">Standings</button><button class="scouting-subtab" data-scouting-section="rankings-section">Power Rankings</button><button class="scouting-subtab" data-scouting-section="players-section">Player Scouting</button></nav>
@@ -102,7 +215,7 @@
         <div class="table-wrap"><table><thead><tr><th>Player / assignment</th><th>Pos</th><th>Age</th><th>Talent estimate</th><th>Confidence</th></tr></thead><tbody id="pro-scouting-body"></tbody></table></div>
       </article>
       <article class="panel scouting-panel draft-panel">
-        <div class="section-title"><div><p class="eyebrow">2027 DRAFT CLASS</p><h2>Prospect board</h2></div><span class="roster-note">College production · projected peak · uncertain evaluations</span></div>
+        <div class="section-title"><div><p id="scouting-draft-label" class="eyebrow">2027 DRAFT CLASS</p><h2>Prospect board</h2></div><span class="roster-note">College production · projected peak · uncertain evaluations</span></div>
         <div class="auto-scout-box"><label>Automatic assignment<select id="draft-auto-strategy"><option value="range">Around projected draft range</option><option value="best">Best available prospects</option><option value="position">Positions of need</option></select></label><button id="auto-assign-draft">Assign scouts automatically</button><small id="draft-range-note"></small></div>
         <nav class="draft-view-nav"><button class="draft-view-tab active" data-draft-view="all">Full board</button><button class="draft-view-tab" data-draft-view="assigned">Assigned prospects <span id="assigned-prospect-count">0</span></button></nav>
         <div class="scouting-tools"><label>Sort<select id="draft-sort"><option value="overall">Highest suspected overall</option><option value="fit">Best team fit</option><option value="position">Position</option></select></label><label>Position<select id="draft-position"><option value="All">All positions</option><option>PG</option><option>SG</option><option>SF</option><option>PF</option><option>C</option></select></label></div>
@@ -110,13 +223,27 @@
       </article>
       </div>
     </section>
+    <section id="history-screen" class="app-screen hidden">
+      <article class="panel league-history-panel">
+        <div class="section-title"><div><p class="eyebrow">LEAGUE ARCHIVES</p><h2>Champions, awards &amp; career records</h2></div><span class="tag">PERSISTENT HISTORY</span></div>
+        <p class="summary">Every completed season adds its champion, award winners, retirements and updated career totals to this permanent league record.</p>
+        <div id="league-history-body"></div>
+      </article>
+    </section>
   </main>
-  <dialog id="player-dialog"><button class="dialog-close" id="dialog-close" aria-label="Close">×</button><div id="dialog-content"></div></dialog>
+  <dialog id="player-dialog"><button class="dialog-back hidden" id="dialog-back" aria-label="Back to box score"><span aria-hidden="true">←</span> Back to box score</button><button class="dialog-close" id="dialog-close" aria-label="Close">×</button><div id="dialog-content"></div></dialog>
+  <dialog id="staff-dialog" class="staff-profile-dialog"><button class="dialog-close" id="staff-dialog-close" aria-label="Close staff card">×</button><div id="staff-dialog-content"></div></dialog>
   <dialog id="scouting-reminder" class="reminder-dialog">
     <p class="eyebrow">SCOUTING CHECK-IN</p><h2>Your draft scouts are still unassigned</h2>
     <p class="summary">Ten game dates have passed. Would you like the front office to automatically focus on prospects near your currently projected draft range?</p>
     <div class="reminder-actions"><button id="reminder-auto">Assign automatically</button><button id="reminder-review" class="ghost">Review strategies</button><button id="reminder-manual" class="ghost">Keep scouting manually</button></div>
   </dialog>
-  <script type="module" src="app.js?v=0.7.0-alpha"></script>
+  <dialog id="finance-guide" class="finance-guide-dialog"><button class="dialog-close" id="finance-guide-close" aria-label="Close financial rules guide">×</button><div id="finance-guide-content"></div></dialog>
+  <dialog id="storage-warning" class="reminder-dialog storage-warning-dialog">
+    <p class="eyebrow">SAVE COULD NOT COMPLETE</p><h2>Return to the menu without saving?</h2>
+    <p class="summary">Your current league is still open, but the browser rejected the save. You can stay here and try again, or return to the home screen without saving this latest progress so you can delete an older league.</p>
+    <div class="reminder-actions"><button id="storage-stay">Stay in this league</button><button id="storage-return" class="danger">Return without saving</button></div>
+  </dialog>
+  <script type="module" src="app.js?v=0.20.0-alpha"></script>
 </body>
 </html>
